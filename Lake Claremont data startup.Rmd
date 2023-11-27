@@ -1,0 +1,89 @@
+---
+title: "Lake Claremont Report 2023"
+output: 
+  html_document: 
+    toc_depth: 2
+    fig_caption: yes
+    number_sections: no
+    self_contained: no
+  word_document:
+    toc: yes
+    fig_caption: yes
+editor_options: 
+  markdown: 
+    wrap: 80
+---
+
+```{r load-packages-and-data,include=FALSE}
+load(".RData")
+WQGF <- read.csv("WQ_guide_freshwater_modified.csv")
+row.names(WQGF) <- WQGF$Element; row.names(WQGF)[21:22] <- c("P","PO4.P") 
+ISQG <- read.csv("ISQG.csv"); row.names(ISQG) <- ISQG$Tox
+options("rgdal_show_exportToProj4_warnings"="none")
+library(sf)
+library(reshape2)
+library(maptiles)
+library(prettymapr)
+library(viridis)       # colorblind-friendly palettes
+library(car)
+library(stars) 
+library(ggplot2)
+library(ggmap)
+library(TeachingDemos)
+library(RcmdrMisc)
+library(flextable)
+  set_flextable_defaults(font.family = "Arial", font.size = 11, 
+                       theme_fun = "theme_zebra", padding = 1)
+library(corrplot)
+knitr::opts_chunk$set(comment = NA)
+```
+
+```{r summarise-majors-water, paged.print=FALSE, echo=FALSE}
+summ0 <- numSummary(st_drop_geometry(lcw23[,c("Ca","K","Mg","Na","S")]), 
+           statistics = c("mean","sd","quantiles"),
+           quantiles = c(0,0.5,1))
+if(length(summ0$NAs)==0){
+  tabl0 <- data.frame(summ0$table,n=summ0$n,NAs=rep(0,length(summ0$n)))
+} else {
+  tabl0 <- data.frame(summ0$table,n=summ0$n,NAs=summ0$NAs)
+}
+tabl0 <- signif(as.data.frame(t(tabl0)),3)
+ft <- data.frame(Statistic=c("mean","sd","min","median","max","n","NAs"),tabl0) 
+flextable(ft) |> 
+  colformat_double(i=c(1:5), j=c(2:4), digits=0) |> 
+  colformat_double(i=c(1:5), j=c(5), digits=1) |> 
+  colformat_num(i=c(6:7), j=c(2:6), digits=1) |>
+  set_caption(caption="Summary statistics for major element concentrations (mg/L) in water at Lake Claremont, August 2023. Abbreviations: n = number of valid observations; NAs = number of missing observations.")
+```
+
+<p>&nbsp;</p>
+
+<hr style="height: 4px; background-color: #a0b0c0;" />
+
+```{r summarise-traces-water, paged.print=FALSE, echo=FALSE}
+elem0 <- c("Al","As","Cr","Mn","Zn","PO4.P","P")
+summ0 <- numSummary(st_drop_geometry(lcw23[,elem0]), 
+           statistics = c("mean","sd","quantiles"),
+           quantiles = c(0,0.5,1))
+tabl0 <- data.frame(summ0$table,n=summ0$n,NAs=summ0$NAs)
+tabl0$GV <- rep(NA,length(elem0))
+tabl0$n.gt.GV <- rep(NA,length(elem0))
+for(i in 1:5){
+  tabl0$GV[i] <- WQGF[elem0[i],"GV95"] # 95% species protection as recommended
+  tabl0$n.gt.GV[i] <- 
+    length(which(st_drop_geometry(lcw23[,elem0[i]]) > WQGF[elem0[i],"GV95"]))
+}
+for(i in 6:7){
+  tabl0$GV[i] <- WQGF[elem0[i],"GV80"] # for stressors GV80 = Wetlands
+  tabl0$n.gt.GV[i] <- 
+    length(which(st_drop_geometry(lcw23[,elem0[i]]) > WQGF[elem0[i],"GV80"]))
+}
+colnames(tabl0)[c(3:5,9)] <- c("min","median","max","n > GV")
+
+ft <- as.data.frame(cbind(colnames(tabl0),t(signif(tabl0,3))))
+flextable(ft) |>
+  autofit() |> 
+  set_header_labels(values=list(V1="", PO4.P="FRP", P="Total P")) |>
+  set_caption(caption="Summary statistics for trace component concentrations (mg/L) in water at Lake Claremont, August 2023. Abbreviations: n = number of valid observations; NAs = number of missing observations; GV for Al, As, Cr, Mn, and Zn is maximum concentration for 95% species protection in freshwater (Water Quality Australia, 2023); GV for FRP and Total P is maximum guideline value for south-western Australian wetlands (ANZECC & ARMCANZ 2000); n > GV is the number of samples exceeding the relevant guideline value.")
+```
+
