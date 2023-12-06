@@ -1,0 +1,149 @@
+---
+title: "Lake Claremont Report 2023"
+output: 
+  html_document: 
+    toc_depth: 2
+    fig_caption: yes
+    number_sections: no
+    self_contained: no
+  word_document:
+    toc: yes
+    fig_caption: yes
+editor_options: 
+  markdown: 
+    wrap: 80
+---
+
+The first code chunk just loads the data and packages, and is the same as the
+first R markdown notebook.
+
+```{r load-packages-and-data,include=FALSE}
+git <- "https://github.com/Ratey-AtUWA/LC_report_2023/raw/main/"
+lcsed23 <- read.csv(paste0(git,"lcsed23.csv"))
+lcwater23 <- read.csv(paste0(git,"lcwater23.csv"))
+lcwater23$Group <- as.factor(lcwater23$Group)
+
+WQGF <- read.csv("WQ_guide_freshwater_modified.csv")
+row.names(WQGF) <- WQGF$Element; row.names(WQGF)[21:22] <- c("P","PO4.P") 
+ISQG <- read.csv("ISQG.csv"); row.names(ISQG) <- ISQG$Tox
+options("rgdal_show_exportToProj4_warnings"="none")
+library(RcmdrMisc)
+library(sf)
+library(reshape2)
+library(maptiles)
+library(prettymapr)
+library(viridis)       # colorblind-friendly palettes
+library(car)
+library(diptest)
+library(LaplacesDemon)
+library(flextable)
+  set_flextable_defaults(font.family = "Arial", font.size = 11, 
+                       theme_fun = "theme_zebra", padding = 1)
+knitr::opts_chunk$set(comment = NA)
+```
+
+### Assess variable distributions ± need for transformations
+
+```{r distribution-tests-water, message=FALSE, warning=FALSE, results='hold', echo=FALSE}
+# load car package (for powerTransform function) if not loaded yet
+require(car)
+require(diptest)
+require(LaplacesDemon)
+require(flextable)
+
+# we're going to change the data frame so let's make a temporary copy
+data_0 <- lcwater23
+names.of.cols <- names(data_0)
+
+# use column numbers to select variables we want to assess distributions for
+# for the Lake Claremont water data, don't use Pb and Sc i.e. c(7:26,28,29,31:34)
+
+colz <- c(7:26,28,29,31:34) ### if soil/sediment data use c(7,8,12:43)
+n <- length(colz)
+
+# remove zero or negative values
+for(i in colz){
+  data_0[which(data_0[,i]<1e-6),i] <- NA
+}
+
+# make initial output data frame
+transf_results <- data.frame("Variable"=rep(NA,n), "W_orig"=rep(NA,n),
+                             "p_orig"=rep(NA,n), "W_log_tr"=rep(NA,n),
+                             "p_log_tr"=rep(NA,n), "W_pow_tr"=rep(NA,n),
+                             "p_pow_tr"=rep(NA,n), "Pow_term"=rep(NA,n),
+                             "diptest_p"=rep(NA,n), "modes"=rep(NA,n))
+
+# start loop that assesses variable distributions and 
+# generates matrix of test statistics and p-values
+
+for (i in colz) {
+  pt1 <- powerTransform(data_0[, i])
+  # generate and print test statistics
+  sw0 <- shapiro.test(data_0[, i])
+  sw1 <- shapiro.test(log10(data_0[, i]))
+  sw2 <- shapiro.test((data_0[, i]) ^ as.vector(pt1$lambda))
+  dt0 <- dip.test(log10(data_0[, i]))
+  mod0 <- LaplacesDemon::Modes(log10(data_0[, i]))
+  transf_results[i-(colz[1]-1),] <- 
+    c(names.of.cols[i], signif(sw0$statistic, 3),
+      signif(sw0$p.value, 4), signif(sw1$statistic, 3),
+      signif(sw1$p.value, 4), signif(sw2$statistic, 3),
+      signif(sw2$p.value, 4), signif(as.vector(pt1$lambda), 2),
+      signif(dt0$p.value, 4), length(mod0$modes))
+}
+# output 
+for(i in 2:ncol(transf_results)){
+  transf_results[,i] <- as.numeric(transf_results[,i])
+}
+# t0 <- cbind(transf_results[,1], signif(as.numeric(transf_results[,2:ncol(transf_results)],3)))
+flextable(transf_results[-c(21,24),]) |>
+  set_formatter(p_orig = function(x) sprintf("%.02e",x),
+                p_log_tr = function(x) sprintf("%.02e",x),
+                p_pow_tr = function(x) sprintf("%.02e",x),
+                diptest_p = function(x) sprintf("%.02e",x)) |>
+  set_caption(caption="Normality test results for untransformed, log-transformed, and Box-Cox power-transformed variables, plus modality tests, for analysis of water at Lake Claremont. Modality is assessed using log-transformed variables.")
+
+# remove temporary objects to keep R workspace tidy
+rm(list=c("data_0","colz","n","names.of.cols","i",
+          "pt1","sw0","sw1","sw2","dt0","mod0","transf_results"))
+```
+
+# Estimating sulfate/chloride ratio
+
+The calculation is based on the assumptions that:
+
+1. the S measured by ICP-OES is mainly sulfate
+2. the ratio of Na to Cl is the same as in seawater 
+   (as this ratio is also the same in most rainfall)
+
+In that case, 
+
+- the mass concentration of sulfate is S × 3, since the atomic mass of S is 32, 
+  formula mass of SO4 is 96, so 96/32 = 3
+- the concentrations (mg/L) of Na and Cl in seawater are Na = 10759, Cl = 19357,
+  so Cl = Na × (19357/10759), *i.e*. Cl = Na × 1.799
+  (Chester, R. (2009). Marine Geochemistry (2nd ed.). Wiley/Blackwell Science.)
+  
+$SO_{4}/Cl^{-} = (S \times 3) \div (Na \times 1.799)$
+
+```{r est-sulfate-chloride-ratio, fig.width=7, fig.height=5}
+lcwater23$SO4.Cl <- with(lcwater23, (S*3)/(Na*1.799))
+par(mar=c(4,4,1,1), mgp=c(2,0.3,0), tcl=0.25, font.lab=2, cex.lab=1.25, las=1)
+with(lcwater23, stripchart(SO4.Cl ~ Group, method="jitter", 
+                           xlab=expression(bold(paste("SO"[4]^"2\u2212",
+                                                      "/Cl"^"\u2212","ratio"))),
+                                 ylab = "ENVT4461 Group", 
+                           xlim=c(0.13,0.51), pch=1, lwd=2, 
+                           col=plasma(nlevels(lcwater23$Group), end=.9)))
+abline(v=c(0.14, 0.5), lty=2, col=c("darkmagenta","sienna"))
+text(c(0.141,0.498) ,5.5, pos=c(1,3), cex = 0.95, offset = 0.05, 
+     col = c("darkmagenta","sienna"),
+     labels=c(expression(paste("Mean marine ratio: SO"[4]^"2\u2212",
+                             "/Cl"^"\u2212","= 0.14")), 
+              expression(paste("Acid sulfate Trigger SO"[4]^"2\u2212",
+                               "/Cl"^"\u2212","= 0.5"))), srt=90)
+
+```
+
+Additional exploratory data analysis would include simple maps, scatter plot 
+matrices, box plots of variables ~ Group, and so on!
