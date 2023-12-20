@@ -31,7 +31,7 @@ addnortharrow()
 addscalebar(plotepsg=32750, htin=0.12, label.cex=1.2, padin=c(0.2,0.4))
 
 # make a scaling factor for bubble sizes for data and legend
-ff <- signif((0.03*(par("usr")[4]-par("usr")[3]))/sqrt(max(lcwater23$P,na.rm=T)),3)
+ff <- signif((0.033*(par("usr")[4]-par("usr")[3]))/sqrt(max(lcwater23$P,na.rm=T)),3)
 # plot the data as area-proportional bubbles
 with(lcwater23, symbols(Easting.GPS, Northing.GPS, add=TRUE, circles = ff*sqrt(P), inches=F,
                       bg="#ffe00080", fg="sienna"))
