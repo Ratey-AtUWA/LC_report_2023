@@ -1,0 +1,2037 @@
+---
+output: 
+  bookdown::html_document2: 
+    toc_depth: 2
+    fig_caption: yes
+    number_sections: no
+    self_contained: no
+  html_document: 
+    toc_depth: 2
+    fig_caption: yes
+    number_sections: no
+    self_contained: no
+---
+
+```{r load-packages-and-data,include=FALSE}
+git <- "https://github.com/Ratey-AtUWA/LC_report_2023/raw/main/"
+WQGF <- read.csv(paste0(git,"WQ_guide_freshwater_modified.csv"))
+row.names(WQGF) <- WQGF$Element; row.names(WQGF)[21:22] <- c("P","PO4.P") 
+ISQG <- read.csv(paste0(git,"ISQG.csv")); row.names(ISQG) <- ISQG$Tox
+HIL <- read.csv(paste0(git,"HIL_NEPM.csv")); row.names(HIL) <- HIL$Tox
+options("rgdal_show_exportToProj4_warnings"="none")
+library(sf)
+library(reshape2)
+library(maptiles)
+library(prettymapr)
+library(viridis)       # colorblind-friendly palettes
+library(RColorBrewer)  # colorblind-friendly palettes
+library(scico)         # colorblind-friendly palettes
+source("https://github.com/Ratey-AtUWA/Learn-R/raw/main/UWAcolgrad.R") # palette
+library(car)
+library(effsize)
+library(stars) 
+library(ggplot2)
+library(ggmap)
+library(TeachingDemos)
+library(RcmdrMisc)
+library(flextable)
+  set_flextable_defaults(font.family = "Arial", font.size = 11, 
+                       theme_fun = "theme_booktabs", padding = 1)
+library(officer)
+library(corrplot)
+library(psych)
+```
+
+```{r make-melted-data, include=FALSE}
+lcw23 <- read.csv(file=paste0(git,"lcw23.csv"))
+lcw23 <- st_as_sf(lcw23, coords=c("Easting.GPS","Northing.GPS"), 
+                  crs=st_crs(32750), remove=FALSE)
+lcw23melted <- melt(st_drop_geometry(lcw23), 
+                id.vars = c("Group","SampleID","Easting.GPS","Northing.GPS"), 
+                measure.vars = 7:34)
+lcs23 <- read.csv(file=paste0(git,"lcs23.csv"))
+lcs23 <- st_as_sf(lcs23, coords=c("Easting.GPS","Northing.GPS"), 
+                  crs=st_crs(32750), remove=FALSE)
+lcs23melted <- melt(st_drop_geometry(lcs23), 
+                id.vars = c("Group","SampleID","Easting.GPS","Northing.GPS"), 
+                measure.vars = c(7:8,12:43))
+lcDrainsMin <- read.csv(file=paste0(git,"lcDrainsMin.csv"))
+lcDrainsCrop <- read.csv(file=paste0(git,"lcDrainsCrop.csv"))
+lakeEdge <- read.csv(file=paste0(git,"LC_LakeEdge.csv"))
+tbc <- data.frame(To=c("be","completed"))
+LC_LakeEdge <- st_as_sf(lakeEdge,coords=c("X","Y"), crs=st_crs(32750))
+LC_strict <- st_as_sf(read.csv(paste0(git,"LC_strict.csv")),
+                      coords=c("X","Y"), crs=st_crs(32750))
+lcb <- as.matrix(st_coordinates(LC_strict))
+lkh <- as.matrix(st_coordinates(LC_LakeEdge))
+OSbbox <- matrix(c(383000,383000,385900,385900,383000,6460200,6463300,6463300,6460200,6460200),ncol = 2)
+LC_BoundLake <- st_polygon(list(lcb,lkh)) |> st_sfc(crs=st_crs(32750))
+LC_AreaAsHole <- st_polygon(list(OSbbox,lcb)) |> st_sfc(crs=st_crs(32750))
+```
+
+<table style="width:100%">
+<tr><td style="background-color:#daaa00;">&nbsp;</td></tr>
+<tr><td style="background-color:#003087;">
+<h3 style="color:white;">&nbsp;School of Agriculture and Environment,<br />
+&nbsp;The University of Western Australia</h3>
+<h1 style="color:white;">&nbsp;Lake Claremont &ndash; Environmental Assessment</h1>
+<p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p></td></tr>
+<tr style="min-height:15cm;">
+<td style="min-height:15cm; background-image: url('images/LC-birds-cover.png');">
+<p>&nbsp;</p>
+<p style="font-size:16pt; color:white; text-align:right;">Report to: Town of Claremont&nbsp;<br />& Friends of Lake Claremont&nbsp;</p>
+<p style="font-size:14pt; color:white; text-align:right;">Aura Orozco&nbsp;<br />Andrew Rate&nbsp;</p>
+<p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p>
+<p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p>
+<p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p>
+<p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p></td></tr>
+</table>
+
+<p>&nbsp;</p>
+
+# Acknowledgement  
+
+We acknowledge that Lake Claremont is situated on unceded ancestral lands of the
+Whadjuk Noongar people. We acknowledge these First Australians as the
+traditional owners of the lands where these data were collected, and pay respect
+to their Elders: past, present, and emerging. We thank the Town of Claremont
+represented by Dylan Whiffler for allowing us to sample at Lake Claremont. We
+are grateful to Nick Cook from the Friends of Lake Claremont, Deirdre Gleeson
+from UWA, and Dylan Whiffler for useful discussions when planning sampling.
+Sampling was conducted by the ENVT4461 class of 2023, Chris Brouwer, Eliot
+Hanrio, Michael Hayes, Jasmin Swoboda, Ziyi Wang, and Emielda Yusiharni.
+Sampling and analysis were funded by The University of Western Australia.
+Analyses were performed by Chris Brouwer, Michael Smirk, Louise Heyworth,
+Michael Hayes, Darryl Roberts, and Emielda Yusiharni.
+
+# Executive summary 
+
+```{r tbc-exec-summ, echo=FALSE, paged.print=TRUE, results='asis'}
+ flextable(tbc) |> flextable::theme_box() |> align(align="center",part="all") |>
+  bg(bg="yellow", part="all")
+```
+
+
+# Introduction 
+
+Lakes and wetlands are strategic ecosystems and play a crucial role as they
+provide habitat for wildlife contributing with the preservation of several fauna
+and flora species (Liu et al., 2022). Owing to ecosystem fragmentation,
+construction of civil projects, commercial and residential development and other
+anthropogenic intervention, the high rates of wetlands loss have increased
+substantially up to 50% between 1780 and 1980 (Simpson & Newsome, 2017; van
+Asselen et al., 2013).  More than 10,000  wetlands exist along the Swan Coastal
+Plain in Western Australia, from Moore River to Mandurah (Lund & Davis, 2000).
+However, during the last 200 years of colonisation, “at least 80% of the
+landlocked wetlands on the Swan Coastal Plain have been destroyed” (Simpson &
+Newsome, 2017). One of these strategic ecosystems is Lake Claremont which is
+recognised as Conservation Category Wetland by the Environmental Protection
+Authority (EPA) 2015. In addition, Lake Claremont was also declared as Bush
+Forever  Site No. 220, and its current land use is classified as park and
+recreation reserve (DPLH, 2021; Town of Claremont, 2017).
+
+# Methods 
+
+## Study Site 
+
+Lake Claremont is one of the urban wetlands located within the Swan Coastal
+Plain in WA that was gazetted as a Conservation Category Wetland in 1992
+(Simpson & Newsome, 2017). Since then, the wetland has experienced several
+changes in order to rehabilitate the natural dynamic of the ecosystem, through
+the restoration of native flora, introduction of endemic fauna species,
+improving recreational public open spaces, enhancing the water quality, and
+overall involving the local government, community, private and public sectors to
+accomplish positive changes promoting common efforts throughout the last 30
+years (Town of Claremont, 2017). As such this ecosystem not only supports and
+regulates water distributions and serves as a habitat for several species of
+fauna and flora, but also, it is a strategic environment that provides a space
+for recreational and commercial activities, contributing significantly to social
+and economic growth of the Town of Claremont. The Lake Claremont is a seasonal,
+temporary wetland that occasionally experiences rising water levels due to
+increased precipitation, leading to the overflow of the drainage network
+connected to the site at the edge of the water body (Town of Claremont, 2017).
+According to the Lake Claremont Management Plan 2026-2021, the current land uses
+within the surrounding of the site might affect the water quality and the
+ecosystem dynamic through the inflow of external elements rich in nutrients and
+potential pollutants. These land uses comprise private sport and recreational
+areas, educational facilities, a closed landfill that was situated at the north
+side of the site, a golf course, private
+dwellings, roads and verges. The overall area of the lake encompasses a total of
+68 ha where 33.5ha (49%) is predominantly dedicated to environmental
+rehabilitation and preservation and 34.8ha (51%)  allocated for recreational and
+sporting purposes (Town of Claremont, 2017).
+
+## Sampling 
+
+This study was conducted in August 2023 at Lake Claremont Reserve located 10 km
+to the West of Perth Central Business District (CBD) in Western Australia (WA).
+Sample locations were selected based on the historical background of the area
+and potential pollution sources at the surroundings of the lake. Students of The
+University of Western Australia (UWA) conducted water sampling on the 4^th^ of
+August 2023. Forty-nine water samples from ten different sites were collected
+following the procedures of ENVT4461 Water Sampling Protocol (Rate & Gleeson,
+2023). The samples were collected at 10 different locations around the lake,
+approximately 3-4m from the lake’s shoreline before the water was disturbed,
+submerging the sampling bottles upside-down vertically to an approximate depth
+of 50cm from the surface. Plastic bottles were fully filled. Nitrile gloves were
+worn to avoid cross contamination. Water sample bottles were then labelled and
+placed in an insulated box containing a cooler block for correct preservation.
+
+Soils and sediments were sampled as composites of 3 &times; 0-10&nbsp;cm cores
+within 0.5&nbsp;m of the target coordinate. Soil and sediment sampling was
+conducted towards the northern end of Lake Claremont Reserve, since this
+contained the rehabilitated area and was around the known location of historical
+landfill. The southern section of Lake Claremont Reserve contains the playground
+and golf course, with the Scotch College sports playing fields abutting the path
+around the lake edge on the south-west; none of these areas were suitable for
+soil sampling.
+
+## Sample analysis
+
+Electrical conductivity (EC) of water samples was measured with the use of a calibrated EC
+electrode and meter. Water pH was also measured using a calibrated pH electrode meter. In
+addition, water subsamples were filtered using a clean syringe tip membrane
+(0.45&micro;m), acidified with 5&nbsp;*M* HCl at 1/100 dilution, then sent to the UWA
+laboratory for analysis using ICP-OES (Perkin-Elmer Optima 7300DV) (Rate &
+Gleeson, 2023).
+
+Soil and sediment EC and pH were measured on 1:5 suspensions in deionised water, as for water samples. Elemental content of *aqua regia* (conc. HNO~3~/HCl) digests of sediments, was achieved using ICP-OES. 
+
+Figure \@ref(fig:water-map) shows the water
+sampling locations at the lake, and Figure \@ref(fig:sed-sample-location-map)
+shows locations of soil and sediment samples.
+
+```{r make-photo-map, results='hide', echo=FALSE}
+LC_nearmap <-
+  read_stars("./images/EPSG32750_Date20230831_Lat-31.974028_Lon115.776916_Mpp0.299.jpg",
+             quiet = TRUE)
+st_crs(LC_nearmap) <- st_crs(32750)
+LC_rgb <- st_rgb(LC_nearmap)
+st_crs(LC_rgb) <- st_crs(32750)
+
+LC_N_bb <- matrix(c(383937.2, 384907.0, 384907.0, 383937.2, 383937.2,
+                  6461700,6461700,6462354.4,6462354.4,6461700),
+                ncol = 2,byrow = F)
+LC_N_bb_poly <- st_polygon(list(LC_N_bb)) |> st_sfc(crs=st_crs(32750))
+LC_N_rgb <- st_crop(LC_rgb, LC_N_bb_poly)
+```
+
+```{r water-map, fig.height=9.6, fig.width=8.64, message=FALSE, warning=FALSE, fig.cap="Water sample locations at Lake Claremont (August 2023). Symbols are centered on sample locations, and numbers within symbols are Group / Site numbers. Geotagged aerial photograph from https://nearmap.com, image date 20230831.", include=TRUE, echo=FALSE}
+palette(c("white",viridis::viridis(12)[2:9], "black","transparent"))
+par(oma=c(2,2,.5,.5), mar=c(0,0,0,0), tcl=0.25,xpd=F, mgp=c(1,-0.4,-1),
+    lend="square", ljoin="mitre")
+image(LC_rgb, main="", pch=21,bg=3,col=10,cex=2)
+plot(LC_AreaAsHole, col="#ffffffa0", border="#a0c090", lwd=0.8, add=T)
+lines(lakeEdge, col="yellow3", lwd=2, lty=4)
+with(lcDrainsCrop, lines(N ~ E, col="#4885BF", lwd=3))
+lines(c(384884,384740,384650,384625,384606),
+      c(6462338,6462338,6462230,6462150,6462115), col="#90D0FF", lwd=3,
+      lty=3, lend="round")
+shadowtext(c( 384455, 384230, 384780, 384440, 384470, 384590, 384620),
+     c(6461440,6462035,6461605,6461380,6461240,6461280,6462220), 
+     labels=c("Tiny drain",paste("Drain",c(1,2,3,4,5)),"Surface\ndrain"),
+     font=2, pos=c(2,3,3,2,2,4,3), col=c(rep("#4885BF",6),"#90D0FF"), 
+     bg=c(rep("#ffffffa0",6),"#000000a0"))
+box(lwd=10,col=1)
+axis(1, mgp=c(1,-0.4,-1)); axis(2, mgp=c(1,-0.4,-1))
+mtext("Easting (m)",1,.8,font=2,cex=1.4)
+mtext("Northing (m)",2,.9,font=2,cex=1.4)
+shadowtext(st_bbox(LC_rgb)[3],st_bbox(LC_rgb)[2]-7, 
+           labels="WGS84/UTM Zone 50S (EPSG 32750)\n",
+           cex=0.85, pos=2, col=10, bg=1, r=0.2)
+addnortharrow(pos="topleft", padin=c(.5,.5))
+addscalebar(plotepsg=32750, pos="topleft", htin=0.16, 
+            label.cex=1.4, widthhint=0.2, padin=c(1.2,.5))
+
+ppal <- rev(UWAcolgrad(8, saturated = T, alpha=0.85)[2:7])
+with(lcw23[which(lcw23$Zone2=="nearDrain"),],
+     points(Easting.GPS, Northing.GPS, pch=21, bg="#e0b0ffc0", cex=3.5, lwd=2,
+            col="#b080e0"))
+with(lcw23, points(Easting.GPS, Northing.GPS, 
+                   col=1, pch=c(21:25,21:25)[Group], cex=2.5,  
+                 bg=scico::scico(10,pal="imola", alpha=0.75)[Group], font=2))
+with(lcw23, text(Easting.GPS, Northing.GPS, labels=Group, cex=0.85, font=2,
+                 col=c(rep("white",29),rep("black",20))))
+legend("bottomleft", ncol=1, inset=c(0.07,0.07), text.col=11, cex=1.3, bty="n",
+       title=expression(bold(Site)), title.col=11, x.int=0.3, 
+       legend=c(1:10,NA,"Drains",NA,"Sample","near drain","Mapped","lake edge"), 
+  pch=c(21:25,21:25,NA,NA,NA,21,rep(NA,3)), 
+  lty=c(rep(NA,10),NA,1,1,NA,NA,1,NA), 
+  pt.lwd=c(rep(3,10),NA,NA,NA,3,rep(NA,3)), 
+  col=c(rep("#00000080",10),NA,rep("#00000080",3),NA,"#00000080",NA), 
+  pt.bg=c(rep(11,10),NA,NA,NA,11,rep(NA,3)),
+  pt.cex=c(rep(2.4,10),NA,NA,NA,4,rep(NA,3)),
+  lwd=c(rep(NA,11),6,6,NA,NA,5,NA))
+legend("bottomleft", ncol=1, inset=c(0.07,0.07), text.col=10, cex=1.3, bty="n",
+       title=expression(bold("Site                ")), title.col=10, x.int=0.3, 
+       legend=c(1:10,NA,"Drains",NA,"Sample","near drain","Mapped","lake edge"), 
+  pch=c(21:25,21:25,NA,NA,NA,21,rep(NA,3)), 
+  lty=c(rep(NA,10),NA,1,3,NA,NA,4,NA), 
+  pt.lwd=c(rep(1,10),NA,NA,NA,2,rep(NA,3)), 
+  col=c(rep(1,10),NA,"#4885bf","#90d0ff","#b080e0",NA,"yellow3",NA), 
+  pt.bg=c(scico(10,pal="imola", alpha=0.75),NA,NA,NA,"#e0b0ffc0",rep(NA,3)),
+  pt.cex=c(rep(2,10),NA,NA,NA,3.5,rep(NA,3)),
+  lwd=c(rep(NA,11),3,3,NA,NA,2,NA))
+```
+
+```{r sed-sample-location-map, fig.height=6, fig.width=8.5, message=FALSE, warning=FALSE, fig.cap="Soil and sediment sample locations at Lake Claremont Reserve (August 2023). Symbols are centered on sample locations, and numbers within symbols are Group / Site numbers. Geotagged aerial photograph from https://nearmap.com, image date 20230831.", echo=FALSE}
+palette(c("black",viridis::viridis(12)[2:9], "white","transparent"))
+par(oma=c(2,2,.5,.5), mar=c(0,0,0,0), tcl=0.25,xpd=F, mgp=c(1,-0.4,-1),
+    lend="square", ljoin="mitre")
+image(LC_N_rgb, main="", pch=21,bg=3,col=10,cex=2)
+plot(LC_AreaAsHole, col="#ffffffa0", border="#a0c090", lwd=0.8, add=T)
+lines(lakeEdge, col="#000000b0", lwd=4, lty=1)
+lines(lakeEdge, col="yellow3", lwd=2, lty=4)
+rect(st_bbox(LC_N_rgb)[1],6461500,st_bbox(LC_N_rgb)[3],6461700,col=10,bord=10)
+with(lcDrainsCrop, lines(N ~ E, col="#80d0ff", lwd=3))
+lines(c(384884,384740,384650,384625,384606),
+      c(6462338,6462338,6462230,6462150,6462115), col="#80d0ff", lwd=3,lty=3)
+axis(1, mgp=c(1,-0.4,-1)); axis(2, mgp=c(1,-0.4,-1))
+mtext("Easting (m)",1,.8,font=2,cex=1.2)
+mtext("Northing (m)",2,.9,font=2,cex=1.2)
+ppal <- rev(UWAcolgrad(8, saturated = T, alpha=0.85)[2:7])
+shadowtext(c(384550,384350,384300,384680), c(6462180,6461800,6461500,6461400), 
+     labels=c("Rehabilitated area","Lake\nClaremont"), 
+     cex=c(1.2,1.4), col=c("#e8ffd0","powderblue"), 
+     font=3, bg="#00000020", r=0.15)
+addscalebar(plotepsg=32750, pos = "topleft", label.cex = 1.2, htin = 0.16,
+            linecol = 1, label.col = 1, padin = c(1.2,.4))
+addnortharrow(pos="topleft", border = 1,text.col = 1,padin = c(.4,.4))
+shadowtext(st_bbox(LC_N_rgb)[3],st_bbox(LC_N_rgb)[2]-7, 
+           labels="WGS84/UTM Zone 50S (EPSG 32750)\n",
+           cex=0.85, pos=2, col=1, bg=10, r=0.2)
+axis(1, labels=F, tcl=0, at=c(st_bbox(LC_rgb)[1],st_bbox(LC_rgb)[3]))
+axis(2, labels=F, tcl=0, at=c(st_bbox(LC_rgb)[2],st_bbox(LC_rgb)[4]))
+with(lcs23, points(Easting.GPS, Northing.GPS, 
+                   col=10, pch=c(21:25,21:25)[Group], cex=2.5,  
+                 bg=magma(10, alpha=0.75)[Group], font=2))
+with(lcs23, text(Easting.GPS, Northing.GPS, labels=Group, cex=0.85, font=2,
+                 col=c(rep("white",29),rep("black",20))))
+legend("bottomleft", title=expression(bold("Site           ")), 
+       ncol=1, inset=c(0.07,0.05), text.col=1, cex=1.2, bty="n", x.int=0.3, 
+       legend=c(1:10,NA,"Mapped","lake","edge"), 
+       pch=c(21:25,21:25,rep(NA,4)),
+       lty=c(rep(NA,12),1,NA), 
+       pt.lwd=c(rep(6,10),rep(NA,4)), 
+       col=c(rep("#00000040",10),NA,NA,"#000000b0",NA), 
+       pt.bg=c(rep(11,10),rep(NA,4)),
+       pt.cex=c(rep(2.4,10),NA,NA,3.5,NA),
+       lwd=c(rep(NA,12),6,NA))
+legend("bottomleft", title=expression(bold("Site           ")), title.col=11, 
+       ncol=1, inset=c(0.07,0.05), text.col=11, cex=1.2, bty="n", x.int=0.3, 
+       legend=c(1:10,NA,"Mapped","lake","edge"), 
+       pch=c(21:25,21:25,rep(NA,4)), 
+       lty=c(rep(NA,12),4,NA), 
+       pt.lwd=c(rep(1,10),NA,NA,2,NA), 
+       col=c(rep(10,10),NA,NA,"yellow3",NA), 
+       pt.bg=c(magma(10, alpha=0.75),rep(11,4)),
+       pt.cex=c(rep(2,10),NA,NA,3.5,NA),
+       lwd=c(rep(NA,12),2,NA))
+```
+
+<p>&nbsp;</p>
+
+## X-Ray Diffraction  
+
+### Random powder 
+
+Six soil/sediment samples were chosen for the identification of crystalline
+minerals using the random powder X-Ray diffraction technique. Sediment samples
+were homogenised, and a 20 g sub-sample was taken for preparation for XRD
+analysis. Organic matter was removed from samples by suspending samples in 30%
+H~2~O~2~ with gentle heating, and the organic-free samples were dried at 60 °C.
+
+Sub-samples for random powder XRD analysis were prepared by grinding the
+organic-free material to &lsim;&nbsp;10&nbsp;&micro;m using mortars and pestles
+made from non-crystalline materials (glass or agate). X-ray diffraction patterns
+on packed powders were collected using Co-K&alpha;1 radiation
+(1.78901&nbsp;&Aring;) generated at 40 kV and 15 mA using a Ni filter, with a
+goniometer range of 5-80&nbsp;&deg;2&theta; and step size of
+0.011&nbsp;&deg;2&theta;, and a total scan time of 760&nbsp;s.
+
+### Clay Plate Analysis
+
+The clay fraction of sediment samples was separated by sedimentation after
+dispersion in 0.01M sodium hexametaphosphate solution. Using Stokes’ Law to
+estimate sampling time and depth, the suspension containing only particles
+&le;&nbsp;2&nbsp;&micro;m was collected on a porous sample holder to provide an
+oriented sample for XRD analysis. After initial saturation with MgCl~2~,
+subsequent washing with H~2~O (to remove excess MgCl~2~), and air drying, powder
+diffraction patterns were acquired using a Panalytical Aeris X-ray
+Diffractometer. The same sample was similarly treated with 50% glycerol
+solution, and the diffraction pattern remeasured. Samples suspected to contain
+vermiculite and/or interstratified 2:1 phyllosilicates  were heated at
+400&nbsp;&deg;C and 550&nbsp;&deg;C and remeasured after each heating step. Clay
+X-ray diffraction patterns were collected using a goniometer range of
+3-30&nbsp;&deg;2&theta; and step size of 0.00109&nbsp;&deg;2&theta;, giving a
+total scan time of 480 s.
+
+## Data Analysis 
+
+Statistical analysis was conducted using R software (R Core Team, 2022). The
+normality of variable distributions was assessed using Shapiro-Wilk tests. If
+necessary, variables of interest were log~10~&ndash;transformed. Concentrations
+of potential contaminants in sediment were compared with the default guideline
+values for sediments from Water Quality Australia (2023), and the human-health
+based investigation levels for Recreational land use (public open space) (NEPC,
+2013). For users in Australia – applicable guidelines for aquatic ecosystems for
+physical and chemical stressors correspond to the default trigger values for
+South-west Australia for slightly disturbed ecosystems (ANZECC and ARMCANZ,
+2000). Similarly, water quality guidelines for toxicants were also used. As
+recommended by the regulation, for ecosystems classified as slightly-moderately
+disturbed the applicable guideline correspond to 95% protection level trigger
+values fresh water (Water Quality Australia, 2023).
+
+# Results 
+
+## Water
+
+### Data summaries – water
+
+Summaries of water analysis data are presented in 
+Table \@ref(tab:summarise-majors-water) for pH, EC, and major elements, and in 
+Table \@ref(tab:summarise-traces-water) for trace elements (including total P 
+and dissolved reactive phosphate). Figure \@ref(fig:traces-in-water-boxplot) 
+presents the trace element data visually.
+
+```{r summarise-majors-water, paged.print=FALSE, echo=FALSE}
+summ0 <- numSummary(st_drop_geometry(lcw23[,c("pH","EC","Ca","K","Mg","Na","S")]), 
+           statistics = c("mean","sd","quantiles"),
+           quantiles = c(0,0.5,1))
+if(length(summ0$NAs)==0){
+  tabl0 <- data.frame(summ0$table,n=summ0$n,NAs=rep(0,length(summ0$n)))
+} else {
+  tabl0 <- data.frame(summ0$table,n=summ0$n,NAs=summ0$NAs)
+}
+tabl0 <- signif(as.data.frame(t(tabl0)),3)
+ft <- data.frame(Statistic=c("mean","sd","min","median","max","n","NAs"),tabl0) 
+flextable(ft) |> 
+  colformat_double(i=c(1:5), j=c(2:3), digits=2) |> 
+  colformat_double(i=c(1:5), j=c(4:7), digits=0) |> 
+  colformat_double(i=c(1:5), j=c(8), digits=1) |> 
+  colformat_num(i=c(6:7), j=c(2:8), digits=1) |>
+  bold(bold=TRUE, part="header") |>
+  set_caption(caption="Summary statistics for pH, EC (mS/cm), and major element concentrations (mg/L) in water at Lake Claremont, August 2023. Abbreviations: n = number of valid observations; NAs = number of missing observations.", align_with_table=F, fp_p=fp_par(text.align = "left", padding.bottom = 6))
+```
+
+<p>&nbsp;</p>
+
+```{r summarise-traces-water, paged.print=FALSE, echo=FALSE}
+elem0 <- c("Al","As","B","Cr","Mn","Pb","Zn","PO4.P","P")
+summ0 <- numSummary(st_drop_geometry(lcw23[,elem0]), 
+           statistics = c("mean","sd","quantiles"),
+           quantiles = c(0,0.5,1))
+tabl0 <- data.frame(summ0$table,n=summ0$n,NAs=summ0$NAs)
+tabl0$GV <- rep(NA,length(elem0))
+tabl0$n.gt.GV <- rep(NA,length(elem0))
+for(i in 1:7){
+  tabl0$GV[i] <- WQGF[elem0[i],"GV95"] # 95% species protection as recommended
+  tabl0$n.gt.GV[i] <- 
+    length(which(st_drop_geometry(lcw23[,elem0[i]]) > WQGF[elem0[i],"GV95"]))
+}
+for(i in 8:9){
+  tabl0$GV[i] <- WQGF[elem0[i],"GV80"] # for stressors GV80 = Wetlands
+  tabl0$n.gt.GV[i] <- 
+    length(which(st_drop_geometry(lcw23[,elem0[i]]) > WQGF[elem0[i],"GV80"]))
+}
+colnames(tabl0)[c(3:5,9)] <- c("min","median","max","n > GV")
+
+ft <- as.data.frame(cbind(colnames(tabl0),t(signif(tabl0,3))))
+flextable(ft) |>
+  width(j=c(1:8), width=rep(2,8), unit="cm") |>
+  bold(bold=TRUE, part="header")|>
+  set_header_labels(values=list(V1="", PO4.P="FRP", P="Total P")) |>
+  set_caption(caption="Summary statistics for trace component concentrations (mg/L) in water at Lake Claremont, August 2023. Abbreviations: n = number of valid observations; NAs = number of missing observations; GV for Al, As, Cr, Mn, and Zn is maximum concentration for 95% species protection in freshwater (Water Quality Australia, 2023); GV for FRP and Total P is maximum guideline value for south-western Australian wetlands (ANZECC & ARMCANZ 2000); n > GV is the number of samples exceeding the relevant guideline value.", align_with_table=F, fp_p=fp_par(text.align = "left", padding.bottom = 6))
+```
+
+<p>&nbsp;</p>
+
+```{r traces-in-water-boxplot, fig.height=5.5, fig.width=7, fig.cap="Boxplots comparing concentrations of selected trace elements in water samples from lake Claremont. Small black circle symbols are actual observations; vertical red dashed lines are the applicable trigger concentration for environmental protection (ANZECC/ARMCANZ, 2000; Water Quality Australia, 2023; no applicable thresholds exist for Fe, La, or Li).", echo=FALSE}
+lcw23traceMelt <- melt(st_drop_geometry(lcw23), 
+                    id.vars = c("Group","SampleID","Easting.GPS","Northing.GPS"), 
+                    measure.vars = c("PO4.P","Al","As","B","Cr",
+                                     "Fe","La","Li","Mn","P",
+                                     "Pb","Zn"))
+par(mar=c(3,3,.5,.5), mgp=c(1.7,0.3,0), tcl=0.25, font.lab=2)
+with(lcw23traceMelt,
+     boxplot(value ~ variable, log="x", ylim=c(5e-4,2.4), horizontal = T,
+             col=mako(nlevels(lcw23traceMelt$variable),alpha=0.75,begin=0.5),
+             las=1, xlab="Concentration (mg/L)",ylab="")
+)
+with(lcw23traceMelt, 
+     stripchart(value ~ variable, vertical = F,
+                pch=22, cex=0.6, bg="black", col="white", 
+                method="jitter",add=T)
+)
+abline(h=seq(0.5,length(7:35)),col="grey90",lty=3,lwd=2)
+
+varz <- levels(lcw23traceMelt$variable)
+traces <- c("phosphate","aluminium","arsenic","boron","chromium",
+            "iron","lanthanum","lithium","manganese",
+            "Total P","lead","zinc")
+pos0 <- c(2,4,2,4,4,1,1,1,2,4,4,4)
+off0 <- c(5,2,0.5,0.5,5,1.4,1.4,1.4,0.5,3,7,7)
+for(i in 1:nlevels(lcw23traceMelt$variable)){
+  if(varz[i] %in% row.names(WQGF)){
+    lines(rep(WQGF[varz[i],"GV95"],2),c(i-0.55,i+0.55),col="#c00000a0", lwd=2, lty="12")
+    text(WQGF[varz[i],"GV95"],i,labels=traces[i],col="#c00000a0", offset=off0[i],
+         pos=pos0[i])
+  } else {
+    text(1.8,i,labels=traces[i],col="#c00000a0")
+  }
+}
+```
+
+<p>&nbsp;</p>
+
+Tables \@ref(tab:summarise-majors-water) and \@ref(tab:summarise-traces-water)
+show a relatively narrow range of major element concentrations in lake water.
+One location, Site 3 (near the outlet of the surface drain in the north-east of
+Lake Claremont Reserve) has a distinct composition, as the plots in Figure
+\@ref(fig:plots-x3-show-Site3) show. Compared with other locations, Site 3 has
+greater Ca and Si, lesser Na, Mg, K, and S, and near-average pH.
+
+```{r plots-x3-show-Site3, fig.height=4, fig.width=12, fig.cap="Distinct composition for water from Site 3 near the outlet of the surface drain in the north-east of Lake Claremont Reserve, shown by plots of (a) sodium vs. calcium; (b) potassium vs. magnesium; (c) sulfur vs. pH.", echo=FALSE}
+par(mfrow=c(1,3), mar=c(3.5,3.5,1.5,0.5), mgp=c(1.7,0.3,0),tcl=0.25, font.lab=2,
+    cex.lab=1.8, cex.axis=1.6, cex.main=1.8)
+with(lcw23, plot(Na ~ Ca, pch=19, log="xy", cex=4, main="(a)", 
+                 col=rev(RColorBrewer::brewer.pal(10,"Set3"))[Group]))
+with(lcw23, text(Na ~ Ca, labels=Group, cex=1.4))
+text(200,450,pos=2, labels="Site 3 water has\ndistinct composition",col=2, cex=1.6)
+with(lcw23, plot(K ~ Mg, pch=19, log="xy", cex=4, main="(b)", 
+                 col=rev(RColorBrewer::brewer.pal(10,"Set3"))[Group]))
+with(lcw23, text(K ~ Mg, labels=Group, cex=1.4))
+with(lcw23, plot(S ~ pH, pch=19, log="xy", cex=4, main="(c)", 
+                 col=rev(RColorBrewer::brewer.pal(10,"Set3"))[Group]))
+with(lcw23, text(S ~ pH, labels=Group, cex=1.4))
+```
+
+<p>&nbsp;</p>
+
+### Proximity to stormwater drain outlets
+
+Distance from stormwater drain outlets had no consistent effect of the
+concentrations of solutes in Lake Claremont water (Table
+\@ref(tab:ttest-dist-from-drain)). Several elements (Ba, Ca, Fe, Mn, Si, and Sr)
+did have greater concentrations (Welch's t-test p ≤ 0.05; Cohen's d effect sizes
+medium or large) in samples taken near stormwater drain outlets. In contrast, B,
+K, Mg, Na, Ni, Rb, and S concentrations were greater in samples distant from
+stormwater drain outlets.
+
+```{r ttest-dist-from-drain, echo=FALSE, paged.print=FALSE}
+data0 <- st_drop_geometry(lcw23)
+data0$Sc <- NULL ; data0$Pb <- NULL
+row.names(data0) <- NULL
+data0$Zone2 <- factor(data0$Zone2, levels=c("nearDrain", "distDrain"))
+c1 <- which(colnames(data0)=="EC"); cn <- which(colnames(data0)=="Zn")
+for(i in c1:cn){
+  data0[which(data0[,i]<=0),i] <- NA
+  }
+
+rzlt <- data.frame(Variable=names(data0[,c1:cn]), meanNear=rep(NA, length(c1:cn)),
+                   meanDist=rep(NA, length(c1:cn)), Greatest=rep(NA, length(c1:cn)), 
+                   Pval=rep(NA, length(c1:cn)), 
+                   Cohen_d=rep(NA, length(c1:cn)), EffSize=rep(NA, length(c1:cn)))
+for(i in c1:cn){
+  tt0 <- t.test(log10(data0[,i]) ~ data0$Zone2)
+  cd0 <- effsize::cohen.d(log10(data0[,i]) ~ data0$Zone2)
+  if(tt0$estimate[1]>tt0$estimate[2]){
+    gt0 <- "Near"
+  } else {
+    gt0 <- "Distant"
+  }
+  if(tt0$p.value<=0.05){
+    rzlt[i-(c1-1),2:7] <- c(signif(10^tt0$estimate[1],3), 
+                       signif(10^tt0$estimate[2],3), gt0, signif(tt0$p.value,3),
+                     signif(cd0$estimate,3), as.character(cd0$magnitude))
+    } else {
+      rzlt[i-(c1-1),2:7] <- c(signif(10^tt0$estimate[1],3), 
+                         signif(10^tt0$estimate[2],3), NA, NA, NA, NA)
+    }
+  }
+flextable(rzlt)  |>
+  width(j=c(2:3), width=rep(2.5,2), unit="cm") |>
+  bold(bold=TRUE, part="header") |>
+  align(j=2:6, align="right", part="all") |>
+  align(i=1, j=2:3, align="center", part="header") |>
+  valign(valign="bottom", part="header") |>
+  add_header_row(values = c(NA,"Mean",NA,NA,NA,NA), colwidths = c(1,2,1,1,1,1)) |>
+  hline(i=1,j=2:3,part="header")|>
+  hline(i=1,j=c(1,4:7),part="header", border = fp_border(color="white"))|>
+  padding(j=7, padding.left = 10, part="all") |>
+  set_header_labels(values=list(meanNear="Near drains", meanDist="Not near drains", Pval="t-test p value", Cohen_d="Cohen's d", EffSize="Effect size")) |>
+  set_caption(caption="Summary of Welch's t-test results comparing means for near/distant from stormwater drain outlets, using log-transformed concentrations in water at Lake Claremont. Means are back-transformed.", align_with_table=F, fp_p=fp_par(text.align = "left", padding.bottom = 6))
+```
+
+<p>&nbsp;</p>
+
+### Spatial distributions of solutes in water
+
+```{r water-map-Al, fig.height=8, fig.width=7.2, message=FALSE, warning=FALSE, fig.cap="Spatial distribution of aluminium (Al) in water at Lake Claremont shown in percentile ranges, with values exceeding trigger threshold identified. Map tiles from https://www.thunderforest.com/maps/outdoors/ .", include=TRUE, echo=FALSE}
+lcext <- st_as_sf(data.frame(x=c(383900,384860), y=c(6461250,6462350)),
+                  coords = c("x","y"), crs=st_crs(32750))
+lcUTM <- get_tiles(lcext, provider="Thunderforest.Outdoors",
+                   apikey="03b0375e8e7c47d0a03018a9001de439",
+                   crop=TRUE, zoom=16)
+par(oma=c(3,3,1,1), mar=c(0,0,0,0), mgp=c(1.7,0.3,0), font.lab=2, tcl=-0.2)
+palette(c("black", scico(8, pal="imola", alpha =0.75), "white","#00000000"))
+plot_tiles(lcUTM, axes=TRUE)
+mtext("WGS84/UTM Zone 50S (EPSG 32750)",3,-1.2,cex=.8, adj=0.98)
+plot(LC_AreaAsHole, col="#ffffffa0", border="#a0c090", lwd=0.8, add=T)
+mtext("Easting",1,1.8,font=2,cex=1.2)
+mtext("Northing",2,1.8,font=2,cex=1.2)
+var0 <- "Al"
+data0 <- st_drop_geometry(lcw23[,c("Easting.GPS","Northing.GPS",var0)])
+# box(lwd=10,col=1)
+ppal <- rev(UWAcolgrad(8, saturated = T, alpha=0.85)[2:7])
+qz <- signif(quantile(data0[,var0], 
+                      c(0,0.05,0.25,0.5,0.75,0.95,1),na.rm=T),3)
+# catch non-unique breaks in quantiles for cut()
+if(qz[1]==qz[2]) qz[1] <- 0
+for(i in 2:5){
+  if(qz[i]==qz[i-1]) {qz[i] <- qz[i]+(.1*qz[i+1])}
+}
+data0$q0 <- cut(data0[,var0], 
+                breaks=qz,
+                labels = c("Min-5%","5-25%","25-50%","50-75%","75-95%","95%-Max"))
+with(data0, points(Easting.GPS, Northing.GPS, pch=21, cex=seq(1,4,l=6)[q0],
+                   bg=ppal[q0], col=1, lwd=1))
+if(var0 %in% row.names(WQGF)[20:29]){
+  gv0 <- "GV80"; gvname <- "DTV"
+} else {
+  gv0 <- "GV95"; gvname <- "GV for 95% species"
+}
+if(var0 %in% row.names(WQGF)){
+  with(data0[which(data0[,var0] >= WQGF[var0,gv0]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, col="white", cex=1.3, lwd=3))
+  with(data0[which(data0[,var0] >= WQGF[var0,gv0]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, col="red3", cex=1.1, lwd=1))
+}
+addnortharrow(pos="topleft")
+addscalebar(plotepsg=32750, pos="topleft", htin=0.16, 
+            label.cex=1.2, widthhint=0.2, padin=c(1.2,0.15))
+with(lcDrainsMin, lines(E,N, col="steelblue", lwd=3))
+lines(c(384884,384740,384650,384625,384606),
+      c(6462338,6462338,6462230,6462150,6462115), col="steelblue", lwd=3,lty=3)
+legend("bottomleft", inset=c(0.03,0.015), y.intersp=1.4, bty="n",
+       title=paste(var0,"(water, mg/L)                      "), seg.len=3,
+       text.col=1, title.col=1, title.cex=1, cex=1, x.intersp=0.6, 
+       legend=c(paste0("Min-5% (",qz[1],"-",qz[2],")"),
+                paste0("5-25% (",qz[2],"-",qz[3],")"),
+                paste0("25-50% (",qz[3],"-",qz[4],")"),
+                paste0("50-75% (",qz[4],"-",qz[5],")"),
+                paste0("75-95% (",qz[5],"-",qz[6],")"),
+                paste0("95%-Max (",qz[6],"-",qz[7],")"),
+                paste0("\u2265",gvname," (",WQGF[var0,gv0],")"),
+                "Piped drain","Open drain"), 
+       pch=c(rep(21,6),3,NA,NA), 
+       pt.bg=c(ppal,NA,NA,NA), 
+       pt.cex=c(seq(1,4,l=6),1.1,NA,NA),
+       col=c(rep(1,6),"red3","steelblue","steelblue"), 
+       pt.lwd=c(rep(1,6),1,NA,NA),
+       lwd=c(rep(1,6),NA,3,4), 
+       lty=c(rep(NA,6),NA,1,3))
+```
+
+<p>&nbsp;</p>
+
+```{r water-map-As, fig.height=8, fig.width=7.2, message=FALSE, warning=FALSE, fig.cap="Spatial distribution of arsenic (As) in water at Lake Claremont shown in approximate percentile ranges, with values exceeding trigger threshold identified. Map tiles from https://www.thunderforest.com/maps/outdoors/ .", include=TRUE, echo=FALSE}
+lcext <- st_as_sf(data.frame(x=c(383900,384860), y=c(6461250,6462350)),
+                  coords = c("x","y"), crs=st_crs(32750))
+lcUTM <- get_tiles(lcext, provider="Thunderforest.Outdoors",
+                   apikey="03b0375e8e7c47d0a03018a9001de439",
+                   crop=TRUE, zoom=16)
+par(oma=c(3,3,1,1), mar=c(0,0,0,0), mgp=c(1.7,0.3,0), font.lab=2, tcl=-0.2)
+palette(c("black", scico(8, pal="imola", alpha =0.75), "white","#00000000"))
+plot_tiles(lcUTM, axes=TRUE)
+mtext("WGS84/UTM Zone 50S (EPSG 32750)",3,-1.2,cex=.8, adj=0.98)
+plot(LC_AreaAsHole, col="#ffffffa0", border="#a0c090", lwd=0.8, add=T)
+mtext("Easting",1,1.8,font=2,cex=1.2)
+mtext("Northing",2,1.8,font=2,cex=1.2)
+var0 <- "As"
+data0 <- st_drop_geometry(lcw23[,c("Easting.GPS","Northing.GPS",var0)])
+# box(lwd=10,col=1)
+ppal <- rev(UWAcolgrad(8, saturated = T, alpha=0.85)[2:7])
+qz <- signif(quantile(data0[,var0], 
+                      c(0,0.05,0.25,0.5,0.75,0.95,1),na.rm=T),3)
+# catch non-unique breaks in quantiles for cut()
+if(qz[1]==qz[2]) qz[1] <- 0
+for(i in 2:5){
+  if(qz[i]==qz[i-1]) {qz[i] <- qz[i]+(.1*qz[i+1])}
+}
+qz <- c(0.0800,0.0815,0.1100,0.1197,0.1198,0.1199,0.1200)
+data0$q0 <- cut(data0[,var0], 
+                breaks=qz,
+                labels = c("Min-5%","5-25%","25-50%","50-75%","75-95%","95%-Max"))
+with(data0, points(Easting.GPS, Northing.GPS, pch=21, cex=seq(1,4,l=6)[q0],
+                   bg=ppal[q0], col=1, lwd=1))
+if(var0 %in% row.names(WQGF)[20:29]){
+  gv0 <- "GV80"; gvname <- "DTV"
+} else {
+  gv0 <- "GV95"; gvname <- "GV for 95% species"
+}
+if(var0 %in% row.names(WQGF)){
+  with(data0[which(data0[,var0] >= WQGF[var0,gv0]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, col="white", cex=1.3, lwd=3))
+  with(data0[which(data0[,var0] >= WQGF[var0,gv0]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, col="red3", cex=1.1, lwd=1))
+}
+addnortharrow(pos="topleft")
+addscalebar(plotepsg=32750, pos="topleft", htin=0.16, 
+            label.cex=1.2, widthhint=0.2, padin=c(1.2,0.15))
+with(lcDrainsMin, lines(E,N, col="steelblue", lwd=3))
+lines(c(384884,384740,384650,384625,384606),
+      c(6462338,6462338,6462230,6462150,6462115), col="steelblue", lwd=3,lty=3)
+legend("bottomleft", inset=c(0.03,0.015), y.intersp=1.4, bty="n",
+       title=paste(var0,"(water, mg/L)                      "), seg.len=3,
+       text.col=1, title.col=1, title.cex=1, cex=1, x.intersp=0.6, 
+       legend=c(paste0("Min-5% (",qz[1],"-",qz[2],")"),
+                paste0("5-25% (",qz[2],"-",qz[3],")"),
+                paste0("25-50% (",qz[3],"-",qz[4],")"),
+                paste0("50-75% (",qz[4],"-",qz[5],")"),
+                paste0("75-95% (",qz[5],"-",qz[6],")"),
+                paste0("95%-Max (",qz[6],"-",qz[7],")"),
+                paste0("\u2265",gvname," (",WQGF[var0,gv0],")"),
+                "Piped drain","Open drain"), 
+       pch=c(rep(21,6),3,NA,NA), 
+       pt.bg=c(ppal,NA,NA,NA), 
+       pt.cex=c(seq(1,4,l=6),1.1,NA,NA),
+       col=c(rep(1,6),"red3","steelblue","steelblue"), 
+       pt.lwd=c(rep(1,6),1,NA,NA),
+       lwd=c(rep(1,6),NA,3,4), 
+       lty=c(rep(NA,6),NA,1,3))
+```
+
+<p>&nbsp;</p>
+
+```{r water-map-Cr, fig.height=8, fig.width=7.2, message=FALSE, warning=FALSE, fig.cap="Spatial distribution of chromium (Cr) in water at Lake Claremont shown in approximate percentile ranges, with values exceeding trigger threshold identified. Map tiles from https://www.thunderforest.com/maps/outdoors/ .", include=TRUE, echo=FALSE}
+lcext <- st_as_sf(data.frame(x=c(383900,384860), y=c(6461250,6462350)),
+                  coords = c("x","y"), crs=st_crs(32750))
+lcUTM <- get_tiles(lcext, provider="Thunderforest.Outdoors",
+                   apikey="03b0375e8e7c47d0a03018a9001de439",
+                   crop=TRUE, zoom=16)
+par(oma=c(3,3,1,1), mar=c(0,0,0,0), mgp=c(1.7,0.3,0), font.lab=2, tcl=-0.2)
+palette(c("black", scico(8, pal="imola", alpha =0.75), "white","#00000000"))
+plot_tiles(lcUTM, axes=TRUE)
+mtext("WGS84/UTM Zone 50S (EPSG 32750)",3,-1.2,cex=.8, adj=0.98)
+plot(LC_AreaAsHole, col="#ffffffa0", border="#a0c090", lwd=0.8, add=T)
+mtext("Easting",1,1.8,font=2,cex=1.2)
+mtext("Northing",2,1.8,font=2,cex=1.2)
+var0 <- "Cr"
+data0 <- st_drop_geometry(lcw23[,c("Easting.GPS","Northing.GPS",var0)])
+# box(lwd=10,col=1)
+ppal <- rev(UWAcolgrad(8, saturated = T, alpha=0.85)[2:7])
+qz <- signif(quantile(data0[,var0], 
+                      c(0,0.05,0.25,0.5,0.75,0.95,1),na.rm=T),3)
+qz[1:7] <- c(0,0.001,0.0012,0.002,0.0021,0.0022,0.003)
+# catch non-unique breaks in quantiles for cut()
+if(qz[1]==qz[2]) qz[1] <- 0
+for(i in 2:5){
+  if(qz[i]==qz[i-1]) {qz[i] <- qz[i]+(.1*qz[i+1])}
+}
+data0$q0 <- cut(data0[,var0], 
+                breaks=qz,
+                labels = c("Min-5%","5-25%","25-50%","50-75%","75-95%","95%-Max"))
+with(data0, points(Easting.GPS, Northing.GPS, pch=21, cex=seq(1,4,l=6)[q0],
+                   bg=ppal[q0], col=1, lwd=1))
+if(var0 %in% row.names(WQGF)[20:29]){
+  gv0 <- "GV80"; gvname <- "DTV"
+} else {
+  gv0 <- "GV95"; gvname <- "GV for 95% species"
+}
+if(var0 %in% row.names(WQGF)){
+  with(data0[which(data0[,var0] >= WQGF[var0,gv0]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, col="white", cex=1.3, lwd=3))
+  with(data0[which(data0[,var0] >= WQGF[var0,gv0]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, col="red3", cex=1.1, lwd=1))
+}
+addnortharrow(pos="topleft")
+addscalebar(plotepsg=32750, pos="topleft", htin=0.16, 
+            label.cex=1.2, widthhint=0.2, padin=c(1.2,0.15))
+with(lcDrainsMin, lines(E,N, col="steelblue", lwd=3))
+lines(c(384884,384740,384650,384625,384606),
+      c(6462338,6462338,6462230,6462150,6462115), col="steelblue", lwd=3,lty=3)
+legend("bottomleft", inset=c(0.03,0.015), y.intersp=1.4, bty="n",
+       title=paste(var0,"(water, mg/L)                      "), seg.len=3,
+       text.col=1, title.col=1, title.cex=1, cex=1, x.intersp=0.6, 
+       legend=c(paste0("Min-5% (",qz[1],"-",qz[2],")"),
+                paste0("5-25% (",qz[2],"-",qz[3],")"),
+                paste0("25-50% (",qz[3],"-",qz[4],")"),
+                paste0("50-75% (",qz[4],"-",qz[5],")"),
+                paste0("75-95% (",qz[5],"-",qz[6],")"),
+                paste0("95%-Max (",qz[6],"-",qz[7],")"),
+                paste0("\u2265",gvname," (",WQGF[var0,gv0],")"),
+                "Piped drain","Open drain"), 
+       pch=c(rep(21,6),3,NA,NA), 
+       pt.bg=c(ppal,NA,NA,NA), 
+       pt.cex=c(seq(1,4,l=6),1.1,NA,NA),
+       col=c(rep(1,6),"red3","steelblue","steelblue"), 
+       pt.lwd=c(rep(1,6),1,NA,NA),
+       lwd=c(rep(1,6),NA,3,4), 
+       lty=c(rep(NA,6),NA,1,3))
+```
+
+<p>&nbsp;</p>
+
+```{r water-map-Fe, fig.height=8, fig.width=7.2, message=FALSE, warning=FALSE, fig.cap="Spatial distribution of iron (Fe) in water at Lake Claremont shown in percentile ranges (no trigger threshold is applicable for iron). Map tiles from https://www.thunderforest.com/maps/outdoors/ .", include=TRUE, echo=FALSE}
+lcext <- st_as_sf(data.frame(x=c(383900,384860), y=c(6461250,6462350)),
+                  coords = c("x","y"), crs=st_crs(32750))
+lcUTM <- get_tiles(lcext, provider="Thunderforest.Outdoors",
+                   apikey="03b0375e8e7c47d0a03018a9001de439",
+                   crop=TRUE, zoom=16)
+par(oma=c(3,3,1,1), mar=c(0,0,0,0), mgp=c(1.7,0.3,0), font.lab=2, tcl=-0.2)
+palette(c("black", scico(8, pal="imola", alpha =0.75), "white","#00000000"))
+plot_tiles(lcUTM, axes=TRUE)
+mtext("WGS84/UTM Zone 50S (EPSG 32750)",3,-1.2,cex=.8, adj=0.98)
+plot(LC_AreaAsHole, col="#ffffffa0", border="#a0c090", lwd=0.8, add=T)
+mtext("Easting",1,1.8,font=2,cex=1.2)
+mtext("Northing",2,1.8,font=2,cex=1.2)
+var0 <- "Fe"
+data0 <- st_drop_geometry(lcw23[,c("Easting.GPS","Northing.GPS",var0)])
+# box(lwd=10,col=1)
+ppal <- rev(UWAcolgrad(8, saturated = T, alpha=0.85)[2:7])
+qz <- signif(quantile(data0[,var0], 
+                      c(0,0.05,0.25,0.5,0.75,0.95,1),na.rm=T),3)
+# catch non-unique breaks in quantiles for cut()
+if(qz[1]==qz[2]) qz[1] <- 0
+for(i in 2:5){
+  if(qz[i]==qz[i-1]) {qz[i] <- qz[i]+(.1*qz[i+1])}
+}
+data0$q0 <- cut(data0[,var0], 
+                breaks=qz,
+                labels = c("Min-5%","5-25%","25-50%","50-75%","75-95%","95%-Max"))
+with(data0, points(Easting.GPS, Northing.GPS, pch=21, cex=seq(1,4,l=6)[q0],
+                   bg=ppal[q0], col=1, lwd=1))
+if(var0 %in% row.names(WQGF)[20:29]){
+  gv0 <- "GV80"; gvname <- "DTV"
+} else {
+  gv0 <- "GV95"; gvname <- "GV for 95% species"
+}
+if(var0 %in% row.names(WQGF)){
+  with(data0[which(data0[,var0] >= WQGF[var0,gv0]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, col="white", cex=1.3, lwd=3))
+  with(data0[which(data0[,var0] >= WQGF[var0,gv0]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, col="red3", cex=1.1, lwd=1))
+}
+addnortharrow(pos="topleft")
+addscalebar(plotepsg=32750, pos="topleft", htin=0.16, 
+            label.cex=1.2, widthhint=0.2, padin=c(1.2,0.15))
+with(lcDrainsMin, lines(E,N, col="steelblue", lwd=3))
+lines(c(384884,384740,384650,384625,384606),
+      c(6462338,6462338,6462230,6462150,6462115), col="steelblue", lwd=3,lty=3)
+legend("bottomleft", inset=c(0.03,0.015), y.intersp=1.4, bty="n",
+       title=paste(var0,"(water, mg/L)                      "), seg.len=3,
+       text.col=1, title.col=1, title.cex=1, cex=1, x.intersp=0.6, 
+       legend=c(paste0("Min-5% (",qz[1],"-",qz[2],")"),
+                paste0("5-25% (",qz[2],"-",qz[3],")"),
+                paste0("25-50% (",qz[3],"-",qz[4],")"),
+                paste0("50-75% (",qz[4],"-",qz[5],")"),
+                paste0("75-95% (",qz[5],"-",qz[6],")"),
+                paste0("95%-Max (",qz[6],"-",qz[7],")"),
+                paste0("\u2265",gvname," (",WQGF[var0,gv0],")"),
+                "Piped drain","Open drain"), 
+       pch=c(rep(21,6),3,NA,NA), 
+       pt.bg=c(ppal,NA,NA,NA), 
+       pt.cex=c(seq(1,4,l=6),1.1,NA,NA),
+       col=c(rep(1,6),"red3","steelblue","steelblue"), 
+       pt.lwd=c(rep(1,6),1,NA,NA),
+       lwd=c(rep(1,6),NA,3,4), 
+       lty=c(rep(NA,6),NA,1,3))
+```
+
+<p>&nbsp;</p>
+
+```{r water-map-Mn, fig.height=8, fig.width=7.2, message=FALSE, warning=FALSE, fig.cap="Spatial distribution of manganese (Mn) in water at Lake Claremont shown in percentile ranges, with values exceeding trigger threshold identified. Map tiles from https://www.thunderforest.com/maps/outdoors/ .", include=TRUE, echo=FALSE}
+lcext <- st_as_sf(data.frame(x=c(383900,384860), y=c(6461250,6462350)),
+                  coords = c("x","y"), crs=st_crs(32750))
+lcUTM <- get_tiles(lcext, provider="Thunderforest.Outdoors",
+                   apikey="03b0375e8e7c47d0a03018a9001de439",
+                   crop=TRUE, zoom=16)
+par(oma=c(3,3,1,1), mar=c(0,0,0,0), mgp=c(1.7,0.3,0), font.lab=2, tcl=-0.2)
+palette(c("black", scico(8, pal="imola", alpha =0.75), "white","#00000000"))
+plot_tiles(lcUTM, axes=TRUE)
+mtext("WGS84/UTM Zone 50S (EPSG 32750)",3,-1.2,cex=.8, adj=0.98)
+plot(LC_AreaAsHole, col="#ffffffa0", border="#a0c090", lwd=0.8, add=T)
+with(lcDrainsMin, lines(E,N, col="steelblue", lwd=3))
+lines(c(384884,384740,384650,384625,384606),
+      c(6462338,6462338,6462230,6462150,6462115), col="steelblue", lwd=3,lty=3)
+mtext("Easting",1,1.8,font=2,cex=1.2)
+mtext("Northing",2,1.8,font=2,cex=1.2)
+var0 <- "Mn"
+data0 <- st_drop_geometry(lcw23[,c("Easting.GPS","Northing.GPS",var0)])
+# box(lwd=10,col=1)
+ppal <- rev(UWAcolgrad(8, saturated = T, alpha=0.85)[2:7])
+qz <- signif(quantile(data0[,var0], 
+                      c(0,0.05,0.25,0.5,0.75,0.95,1),na.rm=T),3)
+# catch non-unique breaks in quantiles for cut()
+if(qz[1]==qz[2]) qz[1] <- 0
+for(i in 2:5){
+  if(qz[i]==qz[i-1]) {qz[i] <- qz[i]+(.1*qz[i+1])}
+}
+data0$q0 <- cut(data0[,var0], 
+                breaks=qz,
+                labels = c("Min-5%","5-25%","25-50%","50-75%","75-95%","95%-Max"))
+with(data0, points(Easting.GPS, Northing.GPS, pch=21, cex=seq(1,4,l=6)[q0],
+                   bg=ppal[q0], col=1, lwd=1))
+if(var0 %in% row.names(WQGF)[20:29]){
+  gv0 <- "GV80"; gvname <- "DTV"
+} else {
+  gv0 <- "GV95"; gvname <- "GV for 95% species"
+}
+if(var0 %in% row.names(WQGF)){
+  with(data0[which(data0[,var0] >= WQGF[var0,gv0]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, col="white", cex=1.3, lwd=3))
+  with(data0[which(data0[,var0] >= WQGF[var0,gv0]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, col="red3", cex=1.1, lwd=1))
+}
+addnortharrow(pos="topleft")
+addscalebar(plotepsg=32750, pos="topleft", htin=0.16, 
+            label.cex=1.2, widthhint=0.2, padin=c(1.2,0.15))
+legend("bottomleft", inset=c(0.03,0.015), y.intersp=1.4, bty="n",
+       title=paste(var0,"(water, mg/L)                      "), seg.len=3,
+       text.col=1, title.col=1, title.cex=1, cex=1, x.intersp=0.6, 
+       legend=c(paste0("Min-5% (",qz[1],"-",qz[2],")"),
+                paste0("5-25% (",qz[2],"-",qz[3],")"),
+                paste0("25-50% (",qz[3],"-",qz[4],")"),
+                paste0("50-75% (",qz[4],"-",qz[5],")"),
+                paste0("75-95% (",qz[5],"-",qz[6],")"),
+                paste0("95%-Max (",qz[6],"-",qz[7],")"),
+                paste0("\u2265",gvname," (",WQGF[var0,gv0],")"),"Piped drain","Open drain"), 
+       pch=c(rep(21,6),3,NA,NA), 
+       pt.bg=c(ppal,NA,NA,NA), 
+       pt.cex=c(seq(1,4,l=6),1.1,NA,NA),
+       col=c(rep(1,6),"red3","steelblue","steelblue"), 
+       pt.lwd=c(rep(1,6),1,NA,NA),
+       lwd=c(rep(1,6),NA,3,4), 
+       lty=c(rep(NA,6),NA,1,3))
+```
+
+<p>&nbsp;</p>
+
+```{r water-map-PO4, fig.height=8, fig.width=7.2, message=FALSE, warning=FALSE, fig.cap="Spatial distribution of filterable phosphate (PO4.P) in water at Lake Claremont shown in percentile ranges, with values exceeding trigger threshold identified. Map tiles from https://www.thunderforest.com/maps/outdoors/ .", include=TRUE, echo=FALSE}
+lcext <- st_as_sf(data.frame(x=c(383900,384860), y=c(6461250,6462350)),
+                  coords = c("x","y"), crs=st_crs(32750))
+lcUTM <- get_tiles(lcext, provider="Thunderforest.Outdoors",
+                   apikey="03b0375e8e7c47d0a03018a9001de439",
+                   crop=TRUE, zoom=16)
+par(oma=c(3,3,1,1), mar=c(0,0,0,0), mgp=c(1.7,0.3,0), font.lab=2, tcl=-0.2)
+palette(c("black", scico(8, pal="imola", alpha =0.75), "white","#00000000"))
+plot_tiles(lcUTM, axes=TRUE)
+mtext("WGS84/UTM Zone 50S (EPSG 32750)",3,-1.2,cex=.8, adj=0.98)
+plot(LC_AreaAsHole, col="#ffffffa0", border="#a0c090", lwd=0.8, add=T)
+mtext("Easting",1,1.8,font=2,cex=1.2)
+mtext("Northing",2,1.8,font=2,cex=1.2)
+var0 <- "PO4.P"
+data0 <- st_drop_geometry(lcw23[,c("Easting.GPS","Northing.GPS",var0)])
+# box(lwd=10,col=1)
+ppal <- rev(UWAcolgrad(8, saturated = T, alpha=0.85)[2:7])
+qz <- signif(quantile(data0[,var0], 
+                      c(0,0.05,0.25,0.5,0.75,0.95,1),na.rm=T),3)
+# catch non-unique breaks in quantiles for cut()
+if(qz[1]==qz[2]) qz[1] <- 0
+for(i in 2:5){
+  if(qz[i]==qz[i-1]) {qz[i] <- qz[i]+(.1*qz[i+1])}
+}
+data0$q0 <- cut(data0[,var0], 
+                breaks=qz,
+                labels = c("Min-5%","5-25%","25-50%","50-75%","75-95%","95%-Max"))
+with(data0, points(Easting.GPS, Northing.GPS, pch=21, cex=seq(1,4,l=6)[q0],
+                   bg=ppal[q0], col=1, lwd=1))
+if(var0 %in% row.names(WQGF)[20:29]){
+  gv0 <- "GV80"; gvname <- "DTV"
+} else {
+  gv0 <- "GV95"; gvname <- "GV for 95% species"
+}
+if(var0 %in% row.names(WQGF)){
+  with(data0[which(data0[,var0] >= WQGF[var0,gv0]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, col="white", cex=1.3, lwd=3))
+  with(data0[which(data0[,var0] >= WQGF[var0,gv0]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, col="red3", cex=1.1, lwd=1))
+}
+addnortharrow(pos="topleft")
+addscalebar(plotepsg=32750, pos="topleft", htin=0.16, 
+            label.cex=1.2, widthhint=0.2, padin=c(1.2,0.15))
+with(lcDrainsMin, lines(E,N, col="steelblue", lwd=3))
+lines(c(384884,384740,384650,384625,384606),
+      c(6462338,6462338,6462230,6462150,6462115), col="steelblue", lwd=3,lty=3)
+legend("bottomleft", inset=c(0.03,0.015), y.intersp=1.4, bty="n",
+       title=paste(var0,"(water, mg/L)                      "), seg.len=3,
+       text.col=1, title.col=1, title.cex=1, cex=1, x.intersp=0.6, 
+       legend=c(paste0("Min-5% (",qz[1],"-",qz[2],")"),
+                paste0("5-25% (",qz[2],"-",qz[3],")"),
+                paste0("25-50% (",qz[3],"-",qz[4],")"),
+                paste0("50-75% (",qz[4],"-",qz[5],")"),
+                paste0("75-95% (",qz[5],"-",qz[6],")"),
+                paste0("95%-Max (",qz[6],"-",qz[7],")"),
+                paste0("\u2265",gvname," (",WQGF[var0,gv0],")"),"Piped drain","Open drain"), 
+       pch=c(rep(21,6),3,NA,NA), 
+       pt.bg=c(ppal,NA,NA,NA), 
+       pt.cex=c(seq(1,4,l=6),1.1,NA,NA),
+       col=c(rep(1,6),"red3","steelblue","steelblue"), 
+       pt.lwd=c(rep(1,6),1,NA,NA),
+       lwd=c(rep(1,6),NA,3,4), 
+       lty=c(rep(NA,6),NA,1,3))
+```
+
+<p>&nbsp;</p>
+
+```{r water-map-Pb, fig.height=8, fig.width=7.2, message=FALSE, warning=FALSE, fig.cap="Spatial distribution of lead (Pb) in water at Lake Claremont shown in approximate percentile ranges, with values exceeding trigger threshold identified. Map tiles from https://www.thunderforest.com/maps/outdoors/ .", include=TRUE, echo=FALSE}
+lcext <- st_as_sf(data.frame(x=c(383900,384860), y=c(6461250,6462350)),
+                  coords = c("x","y"), crs=st_crs(32750))
+lcUTM <- get_tiles(lcext, provider="Thunderforest.Outdoors",
+                   apikey="03b0375e8e7c47d0a03018a9001de439",
+                   crop=TRUE, zoom=16)
+par(oma=c(3,3,1,1), mar=c(0,0,0,0), mgp=c(1.7,0.3,0), font.lab=2, tcl=-0.2)
+palette(c("black", scico(8, pal="imola", alpha =0.75), "white","#00000000"))
+plot_tiles(lcUTM, axes=TRUE)
+mtext("WGS84/UTM Zone 50S (EPSG 32750)",3,-1.2,cex=.8, adj=0.98)
+plot(LC_AreaAsHole, col="#ffffffa0", border="#a0c090", lwd=0.8, add=T)
+mtext("Easting",1,1.8,font=2,cex=1.2)
+mtext("Northing",2,1.8,font=2,cex=1.2)
+var0 <- "Pb"
+data0 <- st_drop_geometry(lcw23[,c("Easting.GPS","Northing.GPS",var0)])
+# box(lwd=10,col=1)
+ppal <- rev(UWAcolgrad(8, saturated = T, alpha=0.85)[2:7])
+qz <- signif(quantile(data0[,var0], 
+                      c(0,0.05,0.25,0.5,0.75,0.95,1),na.rm=T),5)
+qz[1:7] <- c(0,0.0001,0.00015,0.0002,0.009,0.0095,0.01)
+# catch non-unique breaks in quantiles for cut()
+if(qz[1]==qz[2]) qz[1] <- 0
+for(i in 2:5){
+  if(qz[i]==qz[i-1]) {qz[i] <- qz[i]+(.1*qz[i+1])}
+}
+data0$q0 <- cut(data0[,var0], 
+                breaks=qz,
+                labels = c("Min-5%","5-25%","25-50%","50-75%","75-95%","95%-Max"))
+with(data0, points(Easting.GPS, Northing.GPS, pch=21, cex=seq(1,4,l=6)[q0],
+                   bg=ppal[q0], col=1, lwd=1))
+if(var0 %in% row.names(WQGF)[20:29]){
+  gv0 <- "GV80"; gvname <- "DTV"
+} else {
+  gv0 <- "GV95"; gvname <- "GV for 95% species"
+}
+if(var0 %in% row.names(WQGF)){
+  with(data0[which(data0[,var0] >= WQGF[var0,gv0]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, col="white", cex=1.3, lwd=3))
+  with(data0[which(data0[,var0] >= WQGF[var0,gv0]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, col="red3", cex=1.1, lwd=1))
+}
+addnortharrow(pos="topleft")
+addscalebar(plotepsg=32750, pos="topleft", htin=0.16, 
+            label.cex=1.2, widthhint=0.2, padin=c(1.2,0.15))
+with(lcDrainsMin, lines(E,N, col="steelblue", lwd=3))
+lines(c(384884,384740,384650,384625,384606),
+      c(6462338,6462338,6462230,6462150,6462115), col="steelblue", lwd=3,lty=3)
+legend("bottomleft", inset=c(0.03,0.015), y.intersp=1.4, bty="n",
+       title=paste(var0,"(water, mg/L)                      "), seg.len=3,
+       text.col=1, title.col=1, title.cex=1, cex=1, x.intersp=0.6, 
+       legend=c(paste0("Min-5% (",qz[1],"-",qz[2],")"),
+                paste0("5-25% (",qz[2],"-",qz[3],")"),
+                paste0("25-50% (",qz[3],"-",qz[4],")"),
+                paste0("50-75% (",qz[4],"-",qz[5],")"),
+                paste0("75-95% (",qz[5],"-",qz[6],")"),
+                paste0("95%-Max (",qz[6],"-",qz[7],")"),
+                paste0("\u2265",gvname," (",WQGF[var0,gv0],")"),"Piped drain","Open drain"), 
+       pch=c(rep(21,6),3,NA,NA), 
+       pt.bg=c(ppal,NA,NA,NA), 
+       pt.cex=c(seq(1,4,l=6),1.1,NA,NA),
+       col=c(rep(1,6),"red3","steelblue","steelblue"), 
+       pt.lwd=c(rep(1,6),1,NA,NA),
+       lwd=c(rep(1,6),NA,3,4), 
+       lty=c(rep(NA,6),NA,1,3))
+```
+
+<p>&nbsp;</p>
+
+```{r water-map-Zn, fig.height=8, fig.width=7.2, message=FALSE, warning=FALSE, fig.cap="Spatial distribution of zinc (Zn) in water at Lake Claremont shown in percentile ranges, with values exceeding trigger threshold identified. Map tiles from https://www.thunderforest.com/maps/outdoors/ .", include=TRUE, echo=FALSE}
+lcext <- st_as_sf(data.frame(x=c(383900,384860), y=c(6461250,6462350)),
+                  coords = c("x","y"), crs=st_crs(32750))
+lcUTM <- get_tiles(lcext, provider="Thunderforest.Outdoors",
+                   apikey="03b0375e8e7c47d0a03018a9001de439",
+                   crop=TRUE, zoom=16)
+par(oma=c(3,3,1,1), mar=c(0,0,0,0), mgp=c(1.7,0.3,0), font.lab=2, tcl=-0.2)
+palette(c("black", scico(8, pal="imola", alpha =0.75), "white","#00000000"))
+plot_tiles(lcUTM, axes=TRUE)
+mtext("WGS84/UTM Zone 50S (EPSG 32750)",3,-1.2,cex=.8, adj=0.98)
+plot(LC_AreaAsHole, col="#ffffffa0", border="#a0c090", lwd=0.8, add=T)
+mtext("Easting",1,1.8,font=2,cex=1.2)
+mtext("Northing",2,1.8,font=2,cex=1.2)
+var0 <- "Zn"
+data0 <- st_drop_geometry(lcw23[,c("Easting.GPS","Northing.GPS",var0)])
+# box(lwd=10,col=1)
+ppal <- rev(UWAcolgrad(8, saturated = T, alpha=0.85)[2:7])
+qz <- signif(quantile(data0[,var0], 
+                      c(0,0.05,0.25,0.5,0.75,0.95,1),na.rm=T),3)
+# catch non-unique breaks in quantiles for cut()
+if(qz[1]==qz[2]) qz[1] <- 0
+for(i in 2:5){
+  if(qz[i]==qz[i-1]) {qz[i] <- qz[i]+(.1*qz[i+1])}
+}
+data0$q0 <- cut(data0[,var0], 
+                breaks=qz,
+                labels = c("Min-5%","5-25%","25-50%","50-75%","75-95%","95%-Max"))
+with(data0, points(Easting.GPS, Northing.GPS, pch=21, cex=seq(1,4,l=6)[q0],
+                   bg=ppal[q0], col=1, lwd=1))
+if(var0 %in% row.names(WQGF)[20:29]){
+  gv0 <- "GV80"; gvname <- "DTV"
+} else {
+  gv0 <- "GV95"; gvname <- "GV for 95% species"
+}
+if(var0 %in% row.names(WQGF)){
+  with(data0[which(data0[,var0] >= WQGF[var0,gv0]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, col="white", cex=1.3, lwd=3))
+  with(data0[which(data0[,var0] >= WQGF[var0,gv0]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, col="red3", cex=1.1, lwd=1))
+}
+addnortharrow(pos="topleft")
+addscalebar(plotepsg=32750, pos="topleft", htin=0.16, 
+            label.cex=1.2, widthhint=0.2, padin=c(1.2,0.15))
+with(lcDrainsMin, lines(E,N, col="steelblue", lwd=3))
+lines(c(384884,384740,384650,384625,384606),
+      c(6462338,6462338,6462230,6462150,6462115), col="steelblue", lwd=3,lty=3)
+legend("bottomleft", inset=c(0.03,0.015), y.intersp=1.4, bty="n",
+       title=paste(var0,"(water, mg/L)                      "), seg.len=3,
+       text.col=1, title.col=1, title.cex=1, cex=1, x.intersp=0.6, 
+       legend=c(paste0("Min-5% (",qz[1],"-",qz[2],")"),
+                paste0("5-25% (",qz[2],"-",qz[3],")"),
+                paste0("25-50% (",qz[3],"-",qz[4],")"),
+                paste0("50-75% (",qz[4],"-",qz[5],")"),
+                paste0("75-95% (",qz[5],"-",qz[6],")"),
+                paste0("95%-Max (",qz[6],"-",qz[7],")"),
+                paste0("\u2265",gvname," (",WQGF[var0,gv0],")"),
+                "Piped drain","Open drain"), 
+       pch=c(rep(21,6),3,NA,NA), 
+       pt.bg=c(ppal,NA,NA,NA), 
+       pt.cex=c(seq(1,4,l=6),1.1,NA,NA),
+       col=c(rep(1,6),"red3","steelblue","steelblue"), 
+       pt.lwd=c(rep(1,6),1,NA,NA),
+       lwd=c(rep(1,6),NA,3,4), 
+       lty=c(rep(NA,6),NA,1,3))
+```
+
+<p>&nbsp;</p>
+
+### Relationships between water concentrations
+
+```{r scatter-matrix-water, fig.height=12, fig.width=12, message=FALSE, warning=FALSE, fig.cap="Scatter plot matrix showing pairwise relationships for pH and log₁₀-transformed elements in water from Lake Claremont. Site 3 samples, and a single high P concentration of 0.49 mg/L at Site 2, have been omitted.", echo=FALSE}
+lcw23$Al[which(lcw23$Al==0)] <- NA
+data0 <- 
+  st_drop_geometry(lcw23[-c(11:15),c("Al","Ca","Fe","Mn","B","Na","K","Mg","P","S")]) |> 
+    log10() ; data0[8,"P"] <- NA
+data0 <- cbind(lcw23$pH[-c(11:15)],data0,lcw23$Si[-c(11:15)],lcw23$Zone2[-c(11:15)])
+colnames(data0)[c(1,12,13)] <- c("pH","Si","Zone2")
+spm(~pH+Al+Ca+Fe+Mn+P+S+B+Na+K+Mg+Si | Zone2, data=data0, 
+    use="pairwise.complete.obs", smooth=F, cex=1.2, 
+   pch=c(1,2,15,5), col=c("blue","sienna"), cex.lab=3,
+   legend=list(coords="bottom"))
+# spm(~pH+Al+Ca+Fe+Mn+P+S+B+Ba+Na+K+Mg | Zone, data=data0, smooth=F, cex=1.2, 
+#     pch=c(1,2,15,5), col=c("black","blue","darkcyan","purple"), cex.lab=3)
+```
+
+
+```{r cor-heatmap-water, message=FALSE, warning=FALSE, fig.height=7, fig.width=7, fig.cap="Correlation heatmap (lower triangle) and correlation p-values adjusted using Holm's coreection (upper triangle) for pH and log10-transformed elements in water from Lake Claremont. Site 3 samples have been excluded. Non-significant correlations are indicated by strikethrough text in the upper triangle and gray circles on ellipses in the lower triangle.", out.width="60%", echo=FALSE}
+library(corrplot)
+cordata <- corTest(data0[,1:12], use="pairwise")
+cm.adj <- matrix(rep(1,nrow(cordata$r)^2), nrow=nrow(cordata$r))
+cm.adj[upper.tri(cm.adj,diag=F)] <- cordata$p.adj
+cm.adj[lower.tri(cm.adj,diag=F)] <- cordata$p.adj
+corrplot(cordata$r, method="ellipse", cl.cex=1, diag=F, cl.pos="r",
+         tl.cex=1.2, tl.srt=0, tl.offset=0.7, tl.col="black", addshade="all", 
+         type="full", tl.pos = "lt", p.mat=cordata$p, pch=1, pch.cex=0.65, pch.col="gray80")
+corrplot(cordata$r, add=TRUE, p.mat=cordata$p, addCoef.col="grey50", cl.pos="n", 
+         tl.cex=1.2, tl.srt=0, tl.offset=0.7, tl.col="black", addshade="all", 
+         cl.cex=1, diag=F, pch="—", pch.cex = 1.8, pch.col="firebrick",
+         type="upper", tl.pos = "n",col="transparent")
+```
+
+## Sediments	 
+
+### Data summaries – soil / sediment
+
+Table \@ref(tab:summarise-majors-sed) summarises the statistics for major
+element concentrations in sediment at Lake Claremont based on samples collected
+in 2023; Table \@ref(tab:summarise-traces-sed-isqg) summarises trace element
+concentrations and compares with applicable guideline values.
+
+```{r summarise-majors-sed, paged.print=FALSE, echo=FALSE}
+elem0 <- c("pH","EC","Al","Ca","Fe","K","Mg","Na","P","S")
+summ0 <- numSummary(st_drop_geometry(lcs23[,elem0]), 
+                    statistics = c("mean","sd","quantiles"),
+                    quantiles = c(0,0.5,1))
+
+if(length(summ0$NAs)==0){
+  tabl0 <- data.frame(summ0$table,n=summ0$n,NAs=rep(0,length(summ0$n)))
+} else {
+  tabl0 <- data.frame(summ0$table,n=summ0$n,NAs=summ0$NAs)
+}
+colnames(tabl0)[c(3:5)] <- c("min","median","max")
+ft <- as.data.frame(cbind(colnames(tabl0),t(round(signif(tabl0,3),2))))
+flextable(ft) |>
+  colformat_double(i=c(2), j=c(2), digits=1) |>
+  width(j=c(1:11), width=rep(1.6,11), unit="cm") |>
+  align(j=c(2:11),align="right",part="all") |>
+  set_header_labels(values=list(V1="")) |>
+  bold(bold=TRUE, part="header")|>
+  set_caption(caption="Summary statistics for pH, EC, and major element concentrations (mg/kg) in sediment or soil at Lake Claremont, August 2023. Abbreviations: n = number of valid observations; NAs = number of missing observations.", align_with_table=F, fp_p=fp_par(text.align = "left", padding.bottom = 6))
+```
+
+<p>&nbsp;</p>
+
+```{r summarise-traces-sed-isqg, paged.print=FALSE, echo=FALSE}
+elem0 <- c("As","Cr","Cu","Pb","Ni","Zn")
+summ0 <- numSummary(st_drop_geometry(lcs23[,elem0]), 
+                    statistics = c("mean","sd","quantiles"),
+                    quantiles = c(0,0.5,1))
+
+
+if(length(summ0$NAs)==0){
+  tabl0 <- data.frame(summ0$table,n=summ0$n,NAs=rep(0,length(summ0$n)))
+} else {
+  tabl0 <- data.frame(summ0$table,n=summ0$n,NAs=summ0$NAs)
+}
+tabl0$DGV <- rep(NA,length(elem0))
+tabl0$GV_high <- rep(NA,length(elem0))
+tabl0$HIL_C <- rep(NA,length(elem0))
+for(i in 1:length(elem0)){
+  tabl0$DGV[i] <- 
+    length(which(st_drop_geometry(lcs23[,elem0[i]]) > ISQG[elem0[i],"DGV"]))
+  tabl0$GV_high[i] <- 
+    length(which(st_drop_geometry(lcs23[,elem0[i]]) > ISQG[elem0[i],"GV_high"]))
+  tabl0$HIL_C[i] <- 
+    length(which(st_drop_geometry(lcs23[,elem0[i]]) > HIL[elem0[i],"Recreational_C"]))
+}
+colnames(tabl0)[c(3:5,8:10)] <- c("min","median","max","n > DGV","n > GV-high", "n > HIL(C)")
+ft <- as.data.frame(cbind(colnames(tabl0),t(signif(tabl0,3))))
+flextable(ft) |>
+  width(j=c(1:7), width=c(3,rep(2.2,6)), unit="cm") |>
+  set_header_labels(values=list(V1="")) |>
+  padding(i=8, padding.top = 8) |>
+  bold(bold=TRUE, part="header")|>
+  set_caption(caption="Summary statistics for trace element concentrations (mg/kg) in sediment or soil at Lake Claremont, August 2023. Abbreviations: n = number of valid observations; NAs = number of missing observations; n > DGV is number of samples exceeding the sediment Default Guideline Value; n > GV-high is number of samples exceeding the sediment upper Guideline Value at which toxicity effects might be expected (Water Quality Australia, 2024). HIL(C) is the human-health based investigation level for Recreational (public open space) land use (NEPC, 2013).", align_with_table=F, fp_p=fp_par(text.align = "left", padding.bottom = 6))
+```
+
+<p>&nbsp;</p>
+
+Table \@ref(tab:summarise-traces-sed-isqg) shows that default guideline values 
+for sediment (DGV) are exceeded at Lake Claremont for As, Cu, Pb, Ni, and Zn. 
+Only one sample exceeds the Default Guideline Value (DGV) for Zn, and no  
+samples exceed health-based investigation thresholds for any element.
+
+### Spatial distribution of potential contaminants in soil / sediment
+
+Interestingly, all As, Pb, and Zn concentrations greater than the DGV are within 
+or adjacent to the stormwater drain in the north-east of Lake Claremont Reserve.
+
+```{r sed-map-As, fig.height=5, fig.width=7.1, message=FALSE, warning=FALSE, fig.cap="Spatial distribution of arsenic (As) in soil and sediment samples at Lake Claremont Reserve, shown as percentile categories, with values exceeding the sediment Default Guideline Value (DGV) identified. Map tiles from https://www.thunderforest.com/maps/outdoors/ .", echo=FALSE}
+lcext <- st_as_sf(data.frame(x=c(383900,384900), y=c(6461700,6462350)),
+                  coords = c("x","y"), crs=st_crs(32750))
+lcUTM <- get_tiles(lcext, provider="Thunderforest.Outdoors",
+                   apikey="03b0375e8e7c47d0a03018a9001de439",
+                   crop=TRUE, zoom=16)
+par(oma=c(3,3,1,1), mar=c(0,0,0,0), mgp=c(1.7,0.3,0), font.lab=2, tcl=-0.2)
+palette(c("black", scico(8, pal="imola", alpha =0.75), "white","#00000000"))
+plot_tiles(lcUTM, axes=TRUE)
+mtext("WGS84/UTM Zone 50S (EPSG 32750)",3,-0.75,cex=.8, adj=0.02, font=3)
+plot(LC_AreaAsHole, col="#ffffffa0", border="#a0c090", lwd=0.8, add=T)
+with(lcDrainsMin, lines(E,N, col="steelblue", lwd=3))
+lines(c(384884,384740,384650,384625,384606),
+      c(6462338,6462338,6462230,6462150,6462115), col="steelblue", lwd=3,lty=3)
+mtext("Easting",1,1.8,font=2,cex=1.2)
+mtext("Northing",2,1.8,font=2,cex=1.2)
+var0 <- "As"
+data0 <- st_drop_geometry(lcs23[,c("Easting.GPS","Northing.GPS",var0)])
+# box(lwd=10,col=1)
+ppal <- rev(UWAcolgrad(8, saturated = T, alpha=0.85)[2:7])
+qz <- signif(quantile(data0[,var0], 
+                      c(0,0.05,0.25,0.5,0.75,0.95,1),na.rm=T),3)
+# catch non-unique breaks in quantiles for cut()
+if(qz[1]==qz[2]) qz[1] <- 0
+for(i in 2:5){
+  if(qz[i]==qz[i-1]) {qz[i] <- qz[i]+(.1*qz[i+1])}
+}
+data0$q0 <- cut(data0[,var0], 
+                breaks=qz,
+                labels = c("Min-5%","5-25%","25-50%","50-75%","75-95%","95%-Max"))
+with(data0, points(Easting.GPS, Northing.GPS, pch=21, cex=seq(1,4,l=6)[q0],
+                   bg=ppal[q0],col=1,lwd=1))
+if(var0 %in% ISQG$Tox){
+  with(data0[which(data0[,var0] >=ISQG[var0,"DGV"]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, lwd=3, col="#ffffffb0", cex=1.1))
+  with(data0[which(data0[,var0] >=ISQG[var0,"DGV"]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, lwd=1, col="red3", cex=0.9))
+}
+addnortharrow(pos="topleft", padin=c(0.15,0.2))
+addscalebar(plotepsg=32750, pos="topleft", htin=0.16, 
+            label.cex=1.2, widthhint=0.2, padin=c(1.2,0.2))
+legend("bottomleft", inset=c(0.01,0.015), y.intersp=1.4, bty="n",
+       title=paste(var0,"(soil/sediment, mg/kg)     "), seg.len=3,
+       text.col=1, title.col=1, title.cex=0.9, cex=0.85, x.intersp=0.3, 
+       legend=c(paste0("Min-5% (",qz[1],"-",qz[2],")"),
+                paste0("5-25% (",qz[2],"-",qz[3],")"),
+                paste0("25-50% (",qz[3],"-",qz[4],")"),
+                paste0("50-75% (",qz[4],"-",qz[5],")"),
+                paste0("75-95% (",qz[5],"-",qz[6],")"),
+                paste0("95%-Max (",qz[6],"-",qz[7],")"),
+                paste0("\u2265 DGV (",ISQG[var0,"DGV"]," mg/kg)"),
+                "Piped drain","Open drain"), 
+       pch=c(rep(21,6),3,NA,NA), 
+       pt.bg=c(ppal,NA,NA,NA), 
+       pt.cex=c(seq(1,4,l=6),0.9,NA,NA),
+       col=c(rep(1,6),"red3","steelblue","steelblue"), 
+       pt.lwd=c(rep(1,6),1,NA,NA),
+       lwd=c(rep(1,6),NA,3,4), 
+       lty=c(rep(NA,6),NA,1,3)) 
+```
+
+<p>&nbsp;</p>
+
+```{r sed-map-Cr, fig.height=5, fig.width=7.1, message=FALSE, warning=FALSE, fig.cap="Spatial distribution of chromium (Cr) in soil and sediment samples at Lake Claremont Reserve, shown as percentile categories, with values exceeding the sediment Default Guideline Value (DGV) identified. Map tiles from https://www.thunderforest.com/maps/outdoors/ .", echo=FALSE}
+lcext <- st_as_sf(data.frame(x=c(383900,384900), y=c(6461700,6462350)),
+                  coords = c("x","y"), crs=st_crs(32750))
+lcUTM <- get_tiles(lcext, provider="Thunderforest.Outdoors",
+                   apikey="03b0375e8e7c47d0a03018a9001de439",
+                   crop=TRUE, zoom=16)
+par(oma=c(3,3,1,1), mar=c(0,0,0,0), mgp=c(1.7,0.3,0), font.lab=2, tcl=-0.2)
+palette(c("black", scico(8, pal="imola", alpha =0.75), "white","#00000000"))
+plot_tiles(lcUTM, axes=TRUE)
+mtext("WGS84/UTM Zone 50S (EPSG 32750)",3,-0.75,cex=.8, adj=0.02, font=3)
+plot(LC_AreaAsHole, col="#ffffffa0", border="#a0c090", lwd=0.8, add=T)
+with(lcDrainsMin, lines(E,N, col="steelblue", lwd=3))
+lines(c(384884,384740,384650,384625,384606),
+      c(6462338,6462338,6462230,6462150,6462115), col="steelblue", lwd=3,lty=3)
+mtext("Easting",1,1.8,font=2,cex=1.2)
+mtext("Northing",2,1.8,font=2,cex=1.2)
+var0 <- "Cr"
+data0 <- st_drop_geometry(lcs23[,c("Easting.GPS","Northing.GPS",var0)])
+# box(lwd=10,col=1)
+ppal <- rev(UWAcolgrad(8, saturated = T, alpha=0.85)[2:7])
+qz <- signif(quantile(data0[,var0], 
+                      c(0,0.05,0.25,0.5,0.75,0.95,1),na.rm=T),3)
+# catch non-unique breaks in quantiles for cut()
+if(qz[1]==qz[2]) qz[1] <- 0
+for(i in 2:5){
+  if(qz[i]==qz[i-1]) {qz[i] <- qz[i]+(.1*qz[i+1])}
+}
+data0$q0 <- cut(data0[,var0], 
+                breaks=qz,
+                labels = c("Min-5%","5-25%","25-50%","50-75%","75-95%","95%-Max"))
+with(data0, points(Easting.GPS, Northing.GPS, pch=21, cex=seq(1,4,l=6)[q0],
+                   bg=ppal[q0],col=1,lwd=1))
+if(var0 %in% ISQG$Tox){
+  with(data0[which(data0[,var0] >=ISQG[var0,"DGV"]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, lwd=3, col="#ffffffb0", cex=1.1))
+  with(data0[which(data0[,var0] >=ISQG[var0,"DGV"]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, lwd=1, col="red3", cex=0.9))
+}
+addnortharrow(pos="topleft", padin=c(0.15,0.2))
+addscalebar(plotepsg=32750, pos="topleft", htin=0.16, 
+            label.cex=1.2, widthhint=0.2, padin=c(1.2,0.2))
+legend("bottomleft", inset=c(0.01,0.015), y.intersp=1.4, bty="n",
+       title=paste(var0,"(soil/sediment, mg/kg)     "), seg.len=3,
+       text.col=1, title.col=1, title.cex=0.9, cex=0.85, x.intersp=0.3, 
+       legend=c(paste0("Min-5% (",qz[1],"-",qz[2],")"),
+                paste0("5-25% (",qz[2],"-",qz[3],")"),
+                paste0("25-50% (",qz[3],"-",qz[4],")"),
+                paste0("50-75% (",qz[4],"-",qz[5],")"),
+                paste0("75-95% (",qz[5],"-",qz[6],")"),
+                paste0("95%-Max (",qz[6],"-",qz[7],")"),
+                paste0("\u2265 DGV (",ISQG[var0,"DGV"]," mg/kg)"),
+                "Piped drain","Open drain"), 
+       pch=c(rep(21,6),3,NA,NA), 
+       pt.bg=c(ppal,NA,NA,NA), 
+       pt.cex=c(seq(1,4,l=6),0.9,NA,NA),
+       col=c(rep(1,6),"red3","steelblue","steelblue"), 
+       pt.lwd=c(rep(1,6),1,NA,NA),
+       lwd=c(rep(1,6),NA,3,4), 
+       lty=c(rep(NA,6),NA,1,3)) 
+```
+
+<p>&nbsp;</p>
+
+```{r sed-map-Cu, fig.height=5, fig.width=7.1, message=FALSE, warning=FALSE, fig.cap="Spatial distribution of copper (Cu) in soil and sediment samples at Lake Claremont Reserve, shown as percentile categories, with values exceeding the sediment Default Guideline Value (DGV) identified. Map tiles from https://www.thunderforest.com/maps/outdoors/ .", echo=FALSE}
+lcext <- st_as_sf(data.frame(x=c(383900,384900), y=c(6461700,6462350)),
+                  coords = c("x","y"), crs=st_crs(32750))
+lcUTM <- get_tiles(lcext, provider="Thunderforest.Outdoors",
+                   apikey="03b0375e8e7c47d0a03018a9001de439",
+                   crop=TRUE, zoom=16)
+par(oma=c(3,3,1,1), mar=c(0,0,0,0), mgp=c(1.7,0.3,0), font.lab=2, tcl=-0.2)
+palette(c("black", scico(8, pal="imola", alpha =0.75), "white","#00000000"))
+plot_tiles(lcUTM, axes=TRUE)
+mtext("WGS84/UTM Zone 50S (EPSG 32750)",3,-0.75,cex=.8, adj=0.02, font=3)
+plot(LC_AreaAsHole, col="#ffffffa0", border="#a0c090", lwd=0.8, add=T)
+with(lcDrainsMin, lines(E,N, col="steelblue", lwd=3))
+lines(c(384884,384740,384650,384625,384606),
+      c(6462338,6462338,6462230,6462150,6462115), col="steelblue", lwd=3,lty=3)
+mtext("Easting",1,1.8,font=2,cex=1.2)
+mtext("Northing",2,1.8,font=2,cex=1.2)
+var0 <- "Cu"
+data0 <- st_drop_geometry(lcs23[,c("Easting.GPS","Northing.GPS",var0)])
+# box(lwd=10,col=1)
+ppal <- rev(UWAcolgrad(8, saturated = T, alpha=0.85)[2:7])
+qz <- signif(quantile(data0[,var0], 
+                      c(0,0.05,0.25,0.5,0.75,0.95,1),na.rm=T),3)
+# catch non-unique breaks in quantiles for cut()
+if(qz[1]==qz[2]) qz[1] <- 0
+for(i in 2:5){
+  if(qz[i]==qz[i-1]) {qz[i] <- qz[i]+(.1*qz[i+1])}
+}
+data0$q0 <- cut(data0[,var0], 
+                breaks=qz,
+                labels = c("Min-5%","5-25%","25-50%","50-75%","75-95%","95%-Max"))
+with(data0, points(Easting.GPS, Northing.GPS, pch=21, cex=seq(1,4,l=6)[q0],
+                   bg=ppal[q0],col=1,lwd=1))
+if(var0 %in% ISQG$Tox){
+  with(data0[which(data0[,var0] >=ISQG[var0,"DGV"]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, lwd=3, col="#ffffffb0", cex=1.1))
+  with(data0[which(data0[,var0] >=ISQG[var0,"DGV"]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, lwd=1, col="red3", cex=0.9))
+}
+addnortharrow(pos="topleft", padin=c(0.15,0.2))
+addscalebar(plotepsg=32750, pos="topleft", htin=0.16, 
+            label.cex=1.2, widthhint=0.2, padin=c(1.2,0.2))
+legend("bottomleft", inset=c(0.01,0.015), y.intersp=1.4, bty="n",
+       title=paste(var0,"(soil/sediment, mg/kg)     "), seg.len=3,
+       text.col=1, title.col=1, title.cex=0.9, cex=0.85, x.intersp=0.3, 
+       legend=c(paste0("Min-5% (",qz[1],"-",qz[2],")"),
+                paste0("5-25% (",qz[2],"-",qz[3],")"),
+                paste0("25-50% (",qz[3],"-",qz[4],")"),
+                paste0("50-75% (",qz[4],"-",qz[5],")"),
+                paste0("75-95% (",qz[5],"-",qz[6],")"),
+                paste0("95%-Max (",qz[6],"-",qz[7],")"),
+                paste0("\u2265 DGV (",ISQG[var0,"DGV"]," mg/kg)"),
+                "Piped drain","Open drain"), 
+       pch=c(rep(21,6),3,NA,NA), 
+       pt.bg=c(ppal,NA,NA,NA), 
+       pt.cex=c(seq(1,4,l=6),0.9,NA,NA),
+       col=c(rep(1,6),"red3","steelblue","steelblue"), 
+       pt.lwd=c(rep(1,6),1,NA,NA),
+       lwd=c(rep(1,6),NA,3,4), 
+       lty=c(rep(NA,6),NA,1,3)) 
+```
+
+<p>&nbsp;</p>
+
+```{r sed-map-Pb, fig.height=5, fig.width=7.1, message=FALSE, warning=FALSE, fig.cap="Spatial distribution of lead (Pb) in soil and sediment samples at Lake Claremont Reserve, shown as percentile categories, with values exceeding the sediment Default Guideline Value (DGV) identified. Map tiles from https://www.thunderforest.com/maps/outdoors/ .", echo=FALSE}
+lcext <- st_as_sf(data.frame(x=c(383900,384900), y=c(6461700,6462350)),
+                  coords = c("x","y"), crs=st_crs(32750))
+lcUTM <- get_tiles(lcext, provider="Thunderforest.Outdoors",
+                   apikey="03b0375e8e7c47d0a03018a9001de439",
+                   crop=TRUE, zoom=16)
+par(oma=c(3,3,1,1), mar=c(0,0,0,0), mgp=c(1.7,0.3,0), font.lab=2, tcl=-0.2)
+palette(c("black", scico(8, pal="imola", alpha =0.75), "white","#00000000"))
+plot_tiles(lcUTM, axes=TRUE)
+mtext("WGS84/UTM Zone 50S (EPSG 32750)",3,-0.75,cex=.8, adj=0.02, font=3)
+plot(LC_AreaAsHole, col="#ffffffa0", border="#a0c090", lwd=0.8, add=T)
+with(lcDrainsMin, lines(E,N, col="steelblue", lwd=3))
+lines(c(384884,384740,384650,384625,384606),
+      c(6462338,6462338,6462230,6462150,6462115), col="steelblue", lwd=3,lty=3)
+mtext("Easting",1,1.8,font=2,cex=1.2)
+mtext("Northing",2,1.8,font=2,cex=1.2)
+var0 <- "Pb"
+data0 <- st_drop_geometry(lcs23[,c("Easting.GPS","Northing.GPS",var0)])
+# box(lwd=10,col=1)
+ppal <- rev(UWAcolgrad(8, saturated = T, alpha=0.85)[2:7])
+qz <- signif(quantile(data0[,var0], 
+                      c(0,0.05,0.25,0.5,0.75,0.95,1),na.rm=T),3)
+# catch non-unique breaks in quantiles for cut()
+if(qz[1]==qz[2]) qz[1] <- 0
+for(i in 2:5){
+  if(qz[i]==qz[i-1]) {qz[i] <- qz[i]+(.1*qz[i+1])}
+}
+data0$q0 <- cut(data0[,var0], 
+                breaks=qz,
+                labels = c("Min-5%","5-25%","25-50%","50-75%","75-95%","95%-Max"))
+with(data0, points(Easting.GPS, Northing.GPS, pch=21, cex=seq(1,4,l=6)[q0],
+                   bg=ppal[q0],col=1,lwd=1))
+if(var0 %in% ISQG$Tox){
+  with(data0[which(data0[,var0] >=ISQG[var0,"DGV"]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, lwd=3, col="#ffffffb0", cex=1.1))
+  with(data0[which(data0[,var0] >=ISQG[var0,"DGV"]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, lwd=1, col="red3", cex=0.9))
+}
+addnortharrow(pos="topleft", padin=c(0.15,0.2))
+addscalebar(plotepsg=32750, pos="topleft", htin=0.16, 
+            label.cex=1.2, widthhint=0.2, padin=c(1.2,0.2))
+legend("bottomleft", inset=c(0.01,0.015), y.intersp=1.4, bty="n",
+       title=paste(var0,"(soil/sediment, mg/kg)     "), seg.len=3,
+       text.col=1, title.col=1, title.cex=0.9, cex=0.85, x.intersp=0.3, 
+       legend=c(paste0("Min-5% (",qz[1],"-",qz[2],")"),
+                paste0("5-25% (",qz[2],"-",qz[3],")"),
+                paste0("25-50% (",qz[3],"-",qz[4],")"),
+                paste0("50-75% (",qz[4],"-",qz[5],")"),
+                paste0("75-95% (",qz[5],"-",qz[6],")"),
+                paste0("95%-Max (",qz[6],"-",qz[7],")"),
+                paste0("\u2265 DGV (",ISQG[var0,"DGV"]," mg/kg)"),
+                "Piped drain","Open drain"), 
+       pch=c(rep(21,6),3,NA,NA), 
+       pt.bg=c(ppal,NA,NA,NA), 
+       pt.cex=c(seq(1,4,l=6),0.9,NA,NA),
+       col=c(rep(1,6),"red3","steelblue","steelblue"), 
+       pt.lwd=c(rep(1,6),1,NA,NA),
+       lwd=c(rep(1,6),NA,3,4), 
+       lty=c(rep(NA,6),NA,1,3)) 
+```
+
+<p>&nbsp;</p>
+
+```{r sed-map-Ni, fig.height=5, fig.width=7.1, message=FALSE, warning=FALSE, fig.cap="Spatial distribution of nickel (Ni) in soil and sediment samples at Lake Claremont Reserve, shown as percentile categories, with values exceeding the Default Guideline Value (DGV) identified. Map tiles from https://www.thunderforest.com/maps/outdoors/ .", echo=FALSE}
+lcext <- st_as_sf(data.frame(x=c(383900,384900), y=c(6461700,6462350)),
+                  coords = c("x","y"), crs=st_crs(32750))
+lcUTM <- get_tiles(lcext, provider="Thunderforest.Outdoors",
+                   apikey="03b0375e8e7c47d0a03018a9001de439",
+                   crop=TRUE, zoom=16)
+par(oma=c(3,3,1,1), mar=c(0,0,0,0), mgp=c(1.7,0.3,0), font.lab=2, tcl=-0.2)
+palette(c("black", scico(8, pal="imola", alpha =0.75), "white","#00000000"))
+plot_tiles(lcUTM, axes=TRUE)
+mtext("WGS84/UTM Zone 50S (EPSG 32750)",3,-0.75,cex=.8, adj=0.02, font=3)
+plot(LC_AreaAsHole, col="#ffffffa0", border="#a0c090", lwd=0.8, add=T)
+with(lcDrainsMin, lines(E,N, col="steelblue", lwd=3))
+lines(c(384884,384740,384650,384625,384606),
+      c(6462338,6462338,6462230,6462150,6462115), col="steelblue", lwd=3,lty=3)
+mtext("Easting",1,1.8,font=2,cex=1.2)
+mtext("Northing",2,1.8,font=2,cex=1.2)
+var0 <- "Ni"
+data0 <- st_drop_geometry(lcs23[,c("Easting.GPS","Northing.GPS",var0)])
+# box(lwd=10,col=1)
+ppal <- rev(UWAcolgrad(8, saturated = T, alpha=0.85)[2:7])
+qz <- signif(quantile(data0[,var0], 
+                      c(0,0.05,0.25,0.5,0.75,0.95,1),na.rm=T),3)
+# catch non-unique breaks in quantiles for cut()
+if(qz[1]==qz[2]) qz[1] <- 0
+for(i in 2:5){
+  if(qz[i]==qz[i-1]) {qz[i] <- qz[i]+(.1*qz[i+1])}
+}
+data0$q0 <- cut(data0[,var0], 
+                breaks=qz,
+                labels = c("Min-5%","5-25%","25-50%","50-75%","75-95%","95%-Max"))
+with(data0, points(Easting.GPS, Northing.GPS, pch=21, cex=seq(1,4,l=6)[q0],
+                   bg=ppal[q0],col=1,lwd=1))
+if(var0 %in% ISQG$Tox){
+  with(data0[which(data0[,var0] >=ISQG[var0,"DGV"]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, lwd=3, col="#ffffffb0", cex=1.1))
+  with(data0[which(data0[,var0] >=ISQG[var0,"DGV"]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, lwd=1, col="red3", cex=0.9))
+}
+addnortharrow(pos="topleft", padin=c(0.15,0.2))
+addscalebar(plotepsg=32750, pos="topleft", htin=0.16, 
+            label.cex=1.2, widthhint=0.2, padin=c(1.2,0.2))
+legend("bottomleft", inset=c(0.01,0.015), y.intersp=1.4, bty="n",
+       title=paste(var0,"(soil/sediment, mg/kg)"), seg.len=3,
+       text.col=1, title.col=1, title.cex=0.9, cex=0.85, x.intersp=0.3, 
+       legend=c(paste0("Min-5% (",qz[1],"-",qz[2],")"),
+                paste0("5-25% (",qz[2],"-",qz[3],")"),
+                paste0("25-50% (",qz[3],"-",qz[4],")"),
+                paste0("50-75% (",qz[4],"-",qz[5],")"),
+                paste0("75-95% (",qz[5],"-",qz[6],")"),
+                paste0("95%-Max (",qz[6],"-",qz[7],")"),
+                paste0("\u2265 DGV (",ISQG[var0,"DGV"]," mg/kg)"),
+                "Piped drain","Open drain"), 
+       pch=c(rep(21,6),3,NA,NA), 
+       pt.bg=c(ppal,NA,NA,NA), 
+       pt.cex=c(seq(1,4,l=6),0.9,NA,NA),
+       col=c(rep(1,6),"red3","steelblue","steelblue"), 
+       pt.lwd=c(rep(1,6),1,NA,NA),
+       lwd=c(rep(1,6),NA,3,4), 
+       lty=c(rep(NA,6),NA,1,3)) 
+```
+
+<p>&nbsp;</p>
+
+```{r sed-map-Zn, fig.height=5, fig.width=7.1, message=FALSE, warning=FALSE, fig.cap="Spatial distribution of zinc (Zn) in soil and sediment samples at Lake Claremont Reserve, shown as percentile categories, with values exceeding the sediment Default Guideline Value (DGV) identified. Map tiles from https://www.thunderforest.com/maps/outdoors/ .", echo=FALSE}
+lcext <- st_as_sf(data.frame(x=c(383900,384900), y=c(6461700,6462350)),
+                  coords = c("x","y"), crs=st_crs(32750))
+lcUTM <- get_tiles(lcext, provider="Thunderforest.Outdoors",
+                   apikey="03b0375e8e7c47d0a03018a9001de439",
+                   crop=TRUE, zoom=16)
+par(oma=c(3,3,1,1), mar=c(0,0,0,0), mgp=c(1.7,0.3,0), font.lab=2, tcl=-0.2)
+palette(c("black", scico(8, pal="imola", alpha =0.75), "white","#00000000"))
+plot_tiles(lcUTM, axes=TRUE)
+mtext("WGS84/UTM Zone 50S (EPSG 32750)",3,-0.75,cex=.8, adj=0.02, font=3)
+plot(LC_AreaAsHole, col="#ffffffa0", border="#a0c090", lwd=0.8, add=T)
+with(lcDrainsMin, lines(E,N, col="steelblue", lwd=3))
+lines(c(384884,384740,384650,384625,384606),
+      c(6462338,6462338,6462230,6462150,6462115), col="steelblue", lwd=3,lty=3)
+mtext("Easting",1,1.8,font=2,cex=1.2)
+mtext("Northing",2,1.8,font=2,cex=1.2)
+var0 <- "Zn"
+data0 <- st_drop_geometry(lcs23[,c("Easting.GPS","Northing.GPS",var0)])
+# box(lwd=10,col=1)
+ppal <- rev(UWAcolgrad(8, saturated = T, alpha=0.85)[2:7])
+qz <- signif(quantile(data0[,var0], 
+                      c(0,0.05,0.25,0.5,0.75,0.95,1),na.rm=T),3)
+# catch non-unique breaks in quantiles for cut()
+if(qz[1]==qz[2]) qz[1] <- 0
+for(i in 2:5){
+  if(qz[i]==qz[i-1]) {qz[i] <- qz[i]+(.1*qz[i+1])}
+}
+data0$q0 <- cut(data0[,var0], 
+                breaks=qz,
+                labels = c("Min-5%","5-25%","25-50%","50-75%","75-95%","95%-Max"))
+with(data0, points(Easting.GPS, Northing.GPS, pch=21, cex=seq(1,4,l=6)[q0],
+                   bg=ppal[q0],col=1,lwd=1))
+if(var0 %in% ISQG$Tox){
+  with(data0[which(data0[,var0] >=ISQG[var0,"DGV"]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, lwd=3, col="#ffffffb0", cex=1.1))
+  with(data0[which(data0[,var0] >=ISQG[var0,"DGV"]),], 
+       points(Easting.GPS, Northing.GPS, pch=3, lwd=1, col="red3", cex=0.9))
+}
+addnortharrow(pos="topleft", padin=c(0.15,0.2))
+addscalebar(plotepsg=32750, pos="topleft", htin=0.16, 
+            label.cex=1.2, widthhint=0.2, padin=c(1.2,0.2))
+legend("bottomleft", inset=c(0.01,0.015), y.intersp=1.4, bty="n",
+       title=paste(var0,"(soil/sediment, mg/kg)     "), seg.len=3,
+       text.col=1, title.col=1, title.cex=0.9, cex=0.85, x.intersp=0.3, 
+       legend=c(paste0("Min-5% (",qz[1],"-",qz[2],")"),
+                paste0("5-25% (",qz[2],"-",qz[3],")"),
+                paste0("25-50% (",qz[3],"-",qz[4],")"),
+                paste0("50-75% (",qz[4],"-",qz[5],")"),
+                paste0("75-95% (",qz[5],"-",qz[6],")"),
+                paste0("95%-Max (",qz[6],"-",qz[7],")"),
+                paste0("\u2265 DGV (",ISQG[var0,"DGV"]," mg/kg)"),
+                "Piped drain","Open drain"), 
+       pch=c(rep(21,6),3,NA,NA), 
+       pt.bg=c(ppal,NA,NA,NA), 
+       pt.cex=c(seq(1,4,l=6),0.9,NA,NA),
+       col=c(rep(1,6),"red3","steelblue","steelblue"), 
+       pt.lwd=c(rep(1,6),1,NA,NA),
+       lwd=c(rep(1,6),NA,3,4), 
+       lty=c(rep(NA,6),NA,1,3)) 
+```
+
+<p>&nbsp;</p>
+
+### Relationships between sediment concentrations
+
+```{r scatter-matrix-sed, fig.height=12, fig.width=12, message=FALSE, warning=FALSE, fig.cap="Scatter plot matrix showing pairwise relationships for pH and log10-transformed elements in soil and sediment from Lake Claremont.", echo=FALSE}
+lcs23$Ni[which(lcs23$Ni==0)] <- NA
+data0 <- 
+  st_drop_geometry(lcs23[,c("Al","Ca","Fe","As","Cu","Ni","Pb","Zn","P","S")]) |> 
+    log10() ; data0 <- cbind(lcs23$pH,data0,lcs23$Zone)
+colnames(data0)[c(1,12)] <- c("pH","Zone")
+spm(~pH+Al+Ca+Fe+P+S+As+Cu+Ni+Pb+Zn | Zone, data=data0, smooth=F, cex=1.2, 
+    pch=c(1,2,15,5), col=c("black","blue","darkcyan","purple"), cex.lab=3)
+```
+
+
+```{r cor-heatmap-sed, message=FALSE, warning=FALSE, fig.height=7, fig.width=7, fig.cap="Correlation heatmap (lower triangle) and correlation p-values adjusted using Holm's coreection (upper triangle) for pH and log10-transformed elements in soil and sediment from Lake Claremont. Non-significant correlations are indicated by strikethrough text in the upper triangle and gray circles on ellipses in the lower triangle.", out.width="60%", echo=FALSE}
+library(corrplot)
+cordata <- corTest(data0[,1:11], use="pairwise")
+cm.adj <- matrix(rep(1,nrow(cordata$r)^2), nrow=nrow(cordata$r))
+cm.adj[upper.tri(cm.adj,diag=F)] <- cordata$p.adj
+cm.adj[lower.tri(cm.adj,diag=F)] <- cordata$p.adj
+corrplot(cordata$r, method="ellipse", cl.cex=1, diag=F, cl.pos="r",
+         tl.cex=1.2, tl.srt=0, tl.offset=0.7, tl.col="black", addshade="all", 
+         type="full", tl.pos = "lt", p.mat=cordata$p, pch=1, pch.cex=0.65, pch.col="gray80")
+corrplot(cordata$r, add=TRUE, p.mat=cordata$p, addCoef.col="grey50", cl.pos="n", 
+         tl.cex=1.2, tl.srt=0, tl.offset=0.7, tl.col="black", addshade="all", 
+         cl.cex=1, diag=F, pch="—", pch.cex = 1.8, pch.col="firebrick",
+         type="upper", tl.pos = "n",col="transparent")
+```
+
+&nbsp;
+
+<hr style="height: 3px; background-color: #a0b0c0;" />
+
+## Mineralogy  
+
+### Random powder 
+
+Random Powder X-ray diffraction pattens were relatively simple with low 
+baselines (Figure \@ref(fig:plot-rp-xrd)), which was reflected in the limited 
+suite of mineral phases identified (Table \@ref(tab:pXRD-summary)). The patterns 
+showed little evidence of non-crystalline or poorly crystalline mineral phases.
+
+The mineralogy of the samples selected for random powder XRD analysis (Table
+\@ref(tab:pXRD-summary)) was dominated by quartz and feldspars (albite and
+microcline). Most samples contained carbonates (calcite or nesquehonite) and
+phyllosilicates (kaolinite (clay) or muscovite (mica)).
+
+```{r read-rp-xrd, fig.height=8, fig.width=8, echo=FALSE}
+source("XRD2html_FUNCTION.R")
+
+XRD_LCS23_014 <- xrdml2df("LCS23_014.xrdml",paste0(git,"RP-XRD/"))
+XRD_LCS23_017 <- xrdml2df("LCS23_017.xrdml",paste0(git,"RP-XRD/"))
+XRD_LCS23_018 <- xrdml2df("LCS23_018.xrdml",paste0(git,"RP-XRD/"))
+XRD_LCS23_035 <- xrdml2df("LCS23_035.xrdml",paste0(git,"RP-XRD/"))
+XRD_LCS23_046 <- xrdml2df("LCS23_046.xrdml",paste0(git,"RP-XRD/"))
+XRD_LCS23_049 <- xrdml2df("LCS23_049.xrdml",paste0(git,"RP-XRD/"))
+```
+
+```{r plot-rp-xrd, fig.height=7, fig.width=8, fig.align='center', fig.cap="XRD patterns for random powders of selected soil and sediment samples from Lake Claremont.", echo=FALSE}
+palette(c("black", magma(10)[1:8],"white","transparent"))
+
+par(mfrow=c(3,2), mar=c(3,3,.5,.5), mgp=c(1.7,0.3,0), font.lab=2, ljoin="mitre",
+    cex.lab=1.4, cex.axis=1.2, tcl=0.2)
+plot(XRD_LCS23_014, type="l", ylim=c(0,430000), lwd=1, col=2, 
+     xlab="Diffraction angle (°2θ)")
+  mtext("LCS23_014",3,-1.5,adj=0.98, col=2)
+plot(XRD_LCS23_017, type="l", ylim=c(0,430000), lwd=1, col=3, 
+     xlab="Diffraction angle (°2θ)")
+  mtext("LCS23_017",3,-1.5,adj=0.98, col=3)
+plot(XRD_LCS23_018, type="l", ylim=c(0,430000), lwd=1, col=4, 
+     xlab="Diffraction angle (°2θ)")
+  mtext("LCS23_018",3,-1.5,adj=0.98, col=4)
+plot(XRD_LCS23_035, type="l", ylim=c(0,430000), lwd=1, col=5, 
+     xlab="Diffraction angle (°2θ)")
+  mtext("LCS23_035",3,-1.5,adj=0.98, col=5)
+plot(XRD_LCS23_046, type="l", ylim=c(0,430000), lwd=1, col=6, 
+     xlab="Diffraction angle (°2θ)")
+  mtext("LCS23_046",3,-1.5,adj=0.98, col=6)
+plot(XRD_LCS23_049, type="l", ylim=c(0,430000), lwd=1, col=7, 
+     xlab="Diffraction angle (°2θ)")
+  mtext("LCS23_049",3,-1.5,adj=0.98, col=7)
+```
+
+<p>&nbsp;</p>
+
+```{r pXRD-summary, echo=FALSE, message=FALSE, warning=FALSE}
+pXRD_summ <- read.csv(paste0(git,"pXRD_summ.csv"))
+flextable(pXRD_summ) |> 
+  align(align="center", part="all") |>
+  set_header_labels(Quartz="Qtz", Albite="Alb", Microcline="Micr",
+      Haematite="Haem", Calcite="Calc", Nesquehonite="Nesq", Kaolinite="Kaol",
+      Hornblende="Horn", Gibbsite="Gibb", Halite="Hal", Muscovite="Musc") |>
+  width(j=1, width=3.5, unit="cm") |>
+  bold(bold=TRUE, part="header") |>
+  set_caption(caption="Semiquantitative mineral contents (%) for soil and sediment samples from Lake Claremont, measured by random powder XRD. (Quartz='Qtz', Albite='Alb', Microcline='Micr', Calcite='Calc', Nesquehonite='Nesq', Kaolinite='Kaol', Muscovite='Musc', Hornblende='Horn', Gibbsite='Gibb', Halite='Hal', Haematite='Haem').", align_with_table=F, fp_p=fp_par(text.align = "left", padding.bottom = 6))
+#  rotate(i=1, j=c(2:11), part="header", rotation="btlr")
+```
+
+<p>&nbsp;</p>
+
+### Clay mineralogy
+
+XRD analysis of clay separates (Figure \@ref(fig:plot-clay-xrd)) confirmed the
+presence of only four minerals in this fraction on samples from Lake Claremont:
+kaolinite, illite, vermiculite, and chlorite (Table \@ref(tab:clay-xrd-table)).
+Kaolinite was most abundant and detected in all samples, as was illite; 
+vermiculite and chlorite were absent or only minor components of most samples.
+
+```{r read-clay-xrd, echo=FALSE}
+xrdmlfiles <- list.files(paste0(getwd(),"/clay-XRD/"))
+for(i in 1:length(xrdmlfiles)){
+  dfname <- substr(xrdmlfiles[i],1,stringr::str_length(xrdmlfiles[i])-6)
+  dfname <- gsub("ENVT4461","clay",dfname)
+  dfname <- gsub("-","_",dfname)
+  # print(dfname)
+  assign(dfname, xrdml2df(xrdmlfiles[i], paste0(getwd(),"/clay-XRD/")))
+}
+# ls(pattern = "clay_LCS23")
+```
+
+```{r plot-clay-xrd, echo=FALSE, fig.height=10, fig.width=12, fig.align='center', fig.cap="XRD patterns for separated, oriented clay fractions from selected soil and sediment samples from Lake Claremont. Four successive, additive treatments prior to XRD pattern acquisition are shown for each clay sample: (1) Mg2+-saturation; (2) glycerol saturation; (3) heating to 400 °C; (4) heating to 550 °C."}
+clayDFs <- ls(pattern = "clay_LCS23")
+sampNos <- c(14,17,18,35,46,49)
+
+par(mfrow=c(3,2), mar=c(3,3,1,1), mgp=c(1.7,0.3,0), font.lab=2, cex.lab=1.5, 
+    cex.axis=1.4, ljoin="mitre")
+palette(c("black", viridis(6)[1:4],"white","transparent"))
+
+list14 <- clayDFs[grep("_14_",clayDFs)]
+spaceUp <- 0
+for(i in 1:length(list14)){
+  if(i==1){
+    with(eval(parse(text=list14[i])), 
+         plot(Counts+spaceUp ~ Angle, type="l", col=i+1,
+              xlab="Diffraction angle (°2θ)", ylab="Counts", xlim=c(3,38)))
+    with(eval(parse(text=list14[i]))[nrow(eval(parse(text=list14[i]))),], 
+         text(Counts+spaceUp ~ Angle, labels=substr(list14[i],15,99),
+              cex=1.4, pos=4, col=i+1))
+    mtext("LCS23_014",3,-1.5,adj=0.98)
+    } else {
+      with(eval(parse(text=list14[i])), 
+           lines(Counts+spaceUp ~ Angle, type="l",col=i+1))
+    with(eval(parse(text=list14[i]))[nrow(eval(parse(text=list14[i]))),], 
+         text(Counts+spaceUp ~ Angle, labels=substr(list14[i],15,99),
+              cex=1.4, pos=4, col=i+1))
+    }
+  spaceUp <- spaceUp + 5000
+}
+
+list17 <- clayDFs[grep("_17_",clayDFs)]
+spaceUp <- 0
+for(i in 1:length(list17)){
+  if(i==1){
+    with(eval(parse(text=list17[i])), 
+         plot(Counts+spaceUp ~ Angle, type="l", col=i+1,
+              xlab="Diffraction angle (°2θ)", ylab="Counts", xlim=c(3,38)))
+    with(eval(parse(text=list17[i]))[nrow(eval(parse(text=list17[i]))),], 
+         text(Counts+spaceUp ~ Angle, labels=substr(list17[i],15,99),
+              cex=1.4, pos=4, col=i+1))
+    mtext("LCS23_017",3,-1.5,adj=0.98)
+  } else {
+    with(eval(parse(text=list17[i])), 
+         lines(Counts+spaceUp ~ Angle, type="l",col=i+1))
+    with(eval(parse(text=list17[i]))[nrow(eval(parse(text=list17[i]))),], 
+         text(Counts+spaceUp ~ Angle, labels=substr(list17[i],15,99),
+              cex=1.4, pos=4, col=i+1))
+  }
+  spaceUp <- spaceUp + 5000
+}
+
+list18 <- clayDFs[grep("_18_",clayDFs)]
+spaceUp <- 0
+for(i in 1:length(list18)){
+  if(i==1){
+    with(eval(parse(text=list18[i])), 
+         plot(Counts+spaceUp ~ Angle, type="l", col=i+1,
+              xlab="Diffraction angle (°2θ)", ylab="Counts", xlim=c(3,38)))
+    with(eval(parse(text=list18[i]))[nrow(eval(parse(text=list18[i]))),], 
+         text(Counts+spaceUp ~ Angle, labels=substr(list18[i],15,99),
+              cex=1.4, pos=4, col=i+1))
+    mtext("LCS23_018",3,-1.5,adj=0.98)
+  } else {
+    with(eval(parse(text=list18[i])), 
+         lines(Counts+spaceUp ~ Angle, type="l",col=i+1))
+    with(eval(parse(text=list18[i]))[nrow(eval(parse(text=list18[i]))),], 
+         text(Counts+spaceUp ~ Angle, labels=substr(list18[i],15,99),
+              cex=1.4, pos=4, col=i+1))
+  }
+  spaceUp <- spaceUp + 5000
+}
+
+list35 <- clayDFs[grep("_35_",clayDFs)]
+spaceUp <- 0
+for(i in 1:length(list35)){
+  if(i==1){
+    with(eval(parse(text=list35[i])), 
+         plot(Counts+spaceUp ~ Angle, type="l", col=i+1,
+              xlab="Diffraction angle (°2θ)", ylab="Counts", xlim=c(3,38)))
+    with(eval(parse(text=list35[i]))[nrow(eval(parse(text=list35[i]))),], 
+         text(Counts+spaceUp ~ Angle, labels=substr(list35[i],15,99),
+              cex=1.4, pos=4, col=i+1))
+    mtext("LCS23_035",3,-1.5,adj=0.98)
+  } else {
+    with(eval(parse(text=list35[i])), 
+         lines(Counts+spaceUp ~ Angle, type="l",col=i+1))
+    with(eval(parse(text=list35[i]))[nrow(eval(parse(text=list35[i]))),], 
+         text(Counts+spaceUp ~ Angle, labels=substr(list35[i],15,99),
+              cex=1.4, pos=4, col=i+1))
+  }
+  spaceUp <- spaceUp + 5000
+}
+
+list46 <- clayDFs[grep("_46_",clayDFs)]
+spaceUp <- 0
+for(i in 1:length(list46)){
+  if(i==1){
+    with(eval(parse(text=list46[i])), 
+         plot(Counts+spaceUp ~ Angle, type="l", col=i+1,
+              xlab="Diffraction angle (°2θ)", ylab="Counts", xlim=c(3,38)))
+    with(eval(parse(text=list46[i]))[nrow(eval(parse(text=list46[i]))),], 
+         text(Counts+spaceUp ~ Angle, labels=substr(list46[i],15,99),
+              cex=1.4, pos=4, col=i+1))
+    mtext("LCS23_046",3,-1.5,adj=0.98)
+  } else {
+    with(eval(parse(text=list46[i])), 
+         lines(Counts+spaceUp ~ Angle, type="l",col=i+1))
+    with(eval(parse(text=list46[i]))[nrow(eval(parse(text=list46[i]))),], 
+         text(Counts+spaceUp ~ Angle, labels=substr(list46[i],15,99),
+              cex=1.4, pos=4, col=i+1))
+  }
+  spaceUp <- spaceUp + 5000
+}
+
+list49 <- clayDFs[grep("_49_",clayDFs)]
+spaceUp <- 0
+for(i in 1:length(list49)){
+  if(i==1){
+    with(eval(parse(text=list49[i])), 
+         plot(Counts+spaceUp ~ Angle, type="l", col=i+1,
+              xlab="Diffraction angle (°2θ)", ylab="Counts", xlim=c(3,38)))
+    with(eval(parse(text=list49[i]))[nrow(eval(parse(text=list49[i]))),], 
+         text(Counts+spaceUp ~ Angle, labels=substr(list49[i],15,99),
+              cex=1.4, pos=4, col=i+1))
+    mtext("LCS23_049",3,-1.5,adj=0.98)
+  } else {
+    with(eval(parse(text=list49[i])), 
+         lines(Counts+spaceUp ~ Angle, type="l",col=i+1))
+    with(eval(parse(text=list49[i]))[nrow(eval(parse(text=list49[i]))),], 
+         text(Counts+spaceUp ~ Angle, labels=substr(list49[i],15,99),
+              cex=1.4, pos=4, col=i+1))
+  }
+  spaceUp <- spaceUp + 5000
+}
+```
+
+```{r clay-xrd-table, echo=FALSE}
+  cpXRD_summ <- data.frame(Sample=paste0("LCS23_0",c(14,17,18,35,46,49)),
+                           Kaolinite=c("present", "present", "present", 
+                                       "present", "present", "present"),
+                           Illite=c("present", "present", "minor", "minor",  
+                                    "minor", "minor"),
+                           Vermiculite=c(NA,"present","minor",NA,NA,NA),
+                           Chlorite=c(NA,NA,NA,"minor", "minor", "minor"))
+flextable(cpXRD_summ) |>
+  width(j=1:5, width=c(3,2.5,2,2.5,2.), unit="cm") |>
+  set_caption(caption="Clay mineral identification (presence/absence) for soil and sediment samples from Lake Claremont, measured by oriented clay XRD, with identification based on the USGS flowchart (Poppe et al., 2004).", align_with_table=F, fp_p=fp_par(text.align = "left", padding.bottom = 6))
+```
+
+```{r tbc-clay-plate, echo=FALSE}
+flextable(tbc) |> flextable::theme_box() |> align(align="center",part="all") |>
+  bg(bg="#ffc000", part="all")
+```
+
+<p>&nbsp;</p>
+
+# Discussion
+
+## Water Quality
+
+There are two main features of the Lake Claremont water data: first, that
+concentrations of some substances exceed Australian environmental thresholds,
+and second that the concentrations of several substances depend on the sample's
+proximity to stormwater drain outlets.
+
+The concentrations of both total phosphorus (TP) and filterable reactive
+phosphate (FRP) are similar to those presented by Simpson & Newsome (2017). In
+both studies, mean TP and FRP are around 0.1 mgP/L (Table
+\@ref(tab:summarise-traces-water)), exceeding the maximum stressor
+concentrations for south-western Australian wetlands (ANZECC & ARMCANZ 2000).
+These phosphorus concentrations are most likely to represent contributions from
+fertilised sports grounds and parklands adjacent to Lake Claremont.
+
+Of potentially greater concern are the concentrations of several metals and
+metalloids (As, Cr, Pb, and Zn) which exceed maximum concentrations for 95%
+species protection in freshwater (Water Quality Australia, 2023). (Aluminium
+also exceeds its 0.055 mg/L threshold for 95% species protection, but only in
+two samples &ndash; see Figure \@ref(fig:water-map-Al)). The concentrations of
+these elements is not related to the proximity of samples to drains (Table
+\@ref(tab:ttest-dist-from-drain)).
+
+For some elements (Ba, Ca, Fe, Mn, Si, and Sr), their concentrations are greater
+in samples close to drains than distant (Figure \@ref(fig:water-map); Table
+\@ref(tab:ttest-dist-from-drain)). A possible explanation is that the materials
+used in drain construction (concrete, *etc*.) are contributing elements like Ca
+(and associated Ba, Sr) from cements and similar materials. None of these
+elements are likely to represent an ecological risk to the Lake Claremont
+environment.
+
+- It is interesting that there was no significant effect of drain proximity on
+PO4.P (reactive phosphate, FRP) or total P (Table
+\@ref(tab:ttest-dist-from-drain))
+  - other stormwater drains in Perth are known to contribute P to receiving waters (REFS)
+  
+- negative correlation of Fe, Mn with S, B, Mg. may reflect fresh *vs*. more saline water (maybe rainfall from marine source)
+  - fresher water at Site 3 may be cause of some differences?
+  - Site 3 water also greater Ca, Si - recent concrete construction?
+
+## Sediment Quality
+
+Overall, concentrations of trace elements representing potential contaminants
+were low relative to the most relevant guideline values, the Health
+Investigation Limits for recreational land use (&ldquo;*HIL-C*&rdquo;; NEPC,
+2013). Some trace elements exceeded default guideline values for sediment
+quality, but no HIL-C thresholds were exceeded (Table
+\@ref(tab:summarise-traces-sed-isqg)). All 4 samples exceeding the sediment DGV
+concentrations for arsenic (As) were located at the outlet of a drain channel in
+the north-west of Lake Claremont Reserve, and all greater As concentrations were
+in wet sediments on the lake margin (Figure \@ref(fig:sed-map-As)). It is 
+possible that As is associated with potential acid sulfate materials in 
+sediments; the Lake Claremont lake bed is mapped as high acid sulfate soil risk 
+(DWER, 2006), and arsenic is a known contaminant associated with acid sulfate 
+soils on the Swan Coastal Plain (Appleyard *et al*., 2004).
+
+The open drain channel was also associated with 2 samples having lead (Pb)
+concentrations exceeding DGV (Figure \@ref(fig:sed-map-Pb)), and 2 (different)
+samples having zinc concentration greater than DGV (Figure
+\@ref(fig:sed-map-Zn)). For Pb and Zn, likely sources of contamination are
+historical and contemporary emissions from road traffic, given the proximity of
+the Alfred Road &ndash; Davies Road intersection and a plausible pathway *via*
+the surface drain. Road traffic is a recognised source of Pb and Zn additions to
+soils and sediments (*e.g*. Callender and Rice, 2000; Lee *et al*., 2006). The
+source of elevated As concentrations is not easily explained. The greatest Zn
+concentration was in a sediment sample from the central east section of Lake
+Claremont (Figure \@ref(fig:sed-map-Zn)).
+
+While a single copper (Cu) concentration above DGV was present in a soil sample
+from open parkland in the east of Lake Claremont Reserve, higher Cu
+concentrations were scattered in soil and lake sediment across the Reserve
+(Figure \@ref(fig:sed-map-Cu)). Similarly, for nickel (Ni) a single sample 
+exceeding its DGV was collected from the north-west of Lake Claremont (Figure
+\@ref(fig:sed-map-Ni)).
+
+Soils and sediments were Ca-rich (Table \@ref(tab:summarise-majors-sed)),
+reflecting limestone lithology especially on the western side of Lake Claremont
+(DMIRS, 2016). It should be noted, however, that the *aqua regia* digestion
+procedure did not report results for Si, which would also have been high given
+the sandy nature of most sediments and soils.
+
+Several trace elements showed positive relationships with major elements. In 
+particular, Ni and Pb were positively associated with Al and Fe; it should be
+noted that Al and Fe also showed a strong positive collinearity (Figures
+\@ref(fig:scatter-matrix-sed) and \@ref(fig:cor-heatmap-sed)). Zinc was
+positively correlated with Fe, but not with Al. Arsenic showed positive
+relationships with both Fe and S, which supports the interpretation that As is 
+associated with potential acid sulfate soils which are characterised by the
+presence of pyrite (FeS~2~) or other iron sulfide minerals (DER, 2015). The
+positive relationships of trace elements with Al and Fe are likely to reflect
+accumulation of trace elements by reactive soil and sediment components such as
+clays and iron oxides (Pardue *et al*. 1992; Hamon *et al*., 2004).
+
+- positive outliers for Cu, Ni relative to linear relationship (with Al, Ce, or 
+Fe &ndash; Figure \@ref(fig:scatter-matrix-sed))
+
+```{r tbc-discussion, echo=FALSE}
+flextable(tbc) |> flextable::theme_box() |> align(align="center",part="all") |>
+  bg(bg="yellow", part="all")
+```
+
+<p>&nbsp;</p>
+
+# Conclusions
+
+```{r tbc-conclusions, echo=FALSE}
+flextable(tbc) |> flextable::theme_box() |> align(align="center",part="all") |>
+  bg(bg="yellow", part="all")
+```
+
+<p>&nbsp;</p>
+
+# References
+
+ANZECC/ARMCANZ. (2000). *Australian and New Zealand Guidelines for Fresh and Marine Water Quality (Volume 1, The guidelines)*. Australian and New Zealand Environment and Conservation Council, Agriculture and Resource Management Council of Australia and New Zealand. [https://www.waterquality.gov.au/sites/default/files/documents/anzecc-armcanz-2000-guidelines-vol1.pdf](https://www.waterquality.gov.au/sites/default/files/documents/anzecc-armcanz-2000-guidelines-vol1.pdf){target="_blank"}
+
+Appleyard, S., Wong, S., Willis-Jones, B., Angeloni, J., & Watkins, R. (2004). Groundwater acidification caused by urban development in Perth, Western Australia: Source, distribution, and implications for management. *Australian Journal of Soil Research*, **42**, 579-585. [https://doi.org/10.1071/SR03074](https://doi.org/10.1071/SR03074){target="_blank"}
+
+Callender, E., & Rice, K. C. (2000). The urban environmental gradient: Anthropogenic influences on the spatial and temporal distributions of lead and zinc in sediments. *Environmental Science and Technology*, **34**, 232-238. [https://doi.org/10.1021/es990380s](https://doi.org/10.1021/es990380s){target="_blank"}
+
+DER (Department of Environment Regulation) (2015). *Identification and Investigation of Acid Sulfate Soils and Acidic Landscapes*. Acid Sulfate Soils Guideline Series.  [https://www.der.wa.gov.au/images/documents/your-environment/acid-sulfate-soils/guidelines/Identification_and_investigation_of_acid_ss_and_acidic_landscapes.pdf](https://www.der.wa.gov.au/images/documents/your-environment/acid-sulfate-soils/guidelines/Identification_and_investigation_of_acid_ss_and_acidic_landscapes.pdf){target="_blank"}
+
+DMIRS (2016). 1:500000 Interpreted Bedrock Geology via Geoview. Perth, Department of Mines, Industry Regulation and Safety, Western Australia. [https://geoview.dmp.wa.gov.au/GeoViews/?Viewer=GeoVIEW](https://geoview.dmp.wa.gov.au/GeoViews/?Viewer=GeoVIEW){target="_blank"}
+
+DPLH. (2021). *Plan WA Interactive map*. Department of Planning, Lands and Heritage. [https://espatial.dplh.wa.gov.au/planwa/Index.html?viewer=planwa](https://espatial.dplh.wa.gov.au/planwa/Index.html?viewer=planwa){target="_blank"}
+
+DWER (Department of Water and Environmental Regulation), (2006). Acid Sulfate Soil Risk Map, Swan Coastal Plain (DWER-055). [https://catalogue.data.wa.gov.au/dataset/acid-sulphate-soil-risk-map-swan-coastal-plain-dwer-055](https://catalogue.data.wa.gov.au/dataset/acid-sulphate-soil-risk-map-swan-coastal-plain-dwer-055){target="_blank"}
+
+FOLC (Friends of Lake Claremont). (Established in 2003).  Friends of Lake Claremont FOLC. [https://friendsoflakeclaremont.org/](https://friendsoflakeclaremont.org/){target="_blank"} 
+
+Hamon, R. E., McLaughlin, M. J., Gilkes, R. J., Rate, A. W., Zarcinas, B., Robertson, A., Cozens, G., Radford, N., & Bettenay, L. (2004). Geochemical indices allow estimation of heavy metal background concentrations in soils. *Global Biogeochemical Cycles*, **18**(GB1014). [https://doi.org/10.1029/2003GB002063](https://doi.org/10.1029/2003GB002063){target="_blank"}
+
+Liu, T., Ji, X., & Gong, Y. (2022). Wetland Functional Area Division Method: A Correlation Analysis of Water Quality and Landscape Structure. *Sustainability (Basel, Switzerland)*, 14(21), 14015. [https://doi.org/10.3390/su142114015](https://doi.org/10.3390/su142114015){target="_blank"}  
+
+Lund, M. A., & Davis, J. A. (2000). Seasonal dynamics of plankton communities and water chemistry in a eutrophic wetland (Lake Monger, Western Australia): implications for biomanipulation. *Marine and freshwater research*, 51(4), 321-332. [https://doi.org/10.1071/MF97081](https://doi.org/10.1071/MF97081){target="_blank"}  
+
+NEPC (National Environment Protection Council). (2013). Schedule B(1): Guideline on the Investigation Levels for Soil and Groundwater. **In** *National Environment Protection (Assessment of Site Contamination) Measure (Amended)*. Commonwealth of Australia. 
+
+Pardue, J. H., DeLaune, R. D., & W.H. Patrick, J. (1992). Metal to aluminum correlation in Louisiana coastal wetlands:  identification of elevated metal concentrations. *Journal of Environmental Quality*, **21**, 539-545. [https://doi.org/10.2134/jeq1992.00472425002100040003x](https://doi.org/10.2134/jeq1992.00472425002100040003x){target="_blank"} 
+
+Poppe, L. J., Paskevich, V. F., Hathaway, J. C., & Blackwood, D. S. (2004). *A Laboratory Manual for X-Ray Powder Diffraction* (U. S. Geological Survey Open-File Report 01-041. [http://pubs.usgs.gov/openfile/of01-041/index.htm](http://pubs.usgs.gov/openfile/of01-041/index.htm){target="_blank"}
+
+R Core Team (2022). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. URL [https://www.R-project.org/](https://www.R-project.org/){target="_blank"}.
+  
+Rate, A. W., & Gleeson, D. B. (2023). *ENVT4461 Field Guide and Sampling Protocols*. School of Agriculture and Environment, The University of Western Australia. 
+
+Shah, A. Q., Kazi, T. G., Arain, M. B., Jamali, M. K., Afridi, H. I., Jalbani, N., Baig, J. A., & Kandhro, G. A. (2009). Accumulation of arsenic in different fresh water fish species – potential contribution to high arsenic intakes. *Food chemistry*, 112(2), 520-524. [https://doi.org/10.1016/j.foodchem.2008.05.095](https://doi.org/10.1016/j.foodchem.2008.05.095){target="_blank"}  
+
+Simpson, G., & Newsome, D. (2017). Environmental history of an urban wetland: from degraded colonial resource to nature conservation area. Geo : geography and environment, 4(1), n/a. [https://doi.org/10.1002/geo2.30](https://doi.org/10.1002/geo2.30){target="_blank"}  
+
+Town of Claremont. (2017). Lake Claremont Management Plan 2026-2021.  Retrieved from [https://www.claremont.wa.gov.au/media/cqribluf/lake-claremont-mgt-plan-2016-final-may-17.pdf](https://www.claremont.wa.gov.au/media/cqribluf/lake-claremont-mgt-plan-2016-final-may-17.pdf){target="_blank"}
+
+van Asselen, S., Verburg, P. H., Vermaat, J. E., & Janse, J. H. (2013). Drivers of wetland conversion: a global meta-analysis. *PloS one*, 8(11), e81292-e81292. [https://doi.org/10.1371/journal.pone.0081292](https://doi.org/10.1371/journal.pone.0081292){target="_blank"}
+
+Water Quality Australia. (2023). *Search for toxicant default guideline values for the protection of aquatic ecosystems.* Department of Climate Change, Energy, the Environment and Water, Government of Australia. Retrieved 2024-04-04 from [https://www.waterquality.gov.au/anz-guidelines/guideline-values/default/water-quality-toxicants/search](https://www.waterquality.gov.au/anz-guidelines/guideline-values/default/water-quality-toxicants/search){target="_blank"}
+
+Water Quality Australia. (2024). *Toxicant default guideline values for sediment quality.* Department of Climate Change, Energy, the Environment and Water, Government of Australia. Retrieved 2024-04-11 from [https://www.waterquality.gov.au/anz-guidelines/guideline-values/default/sediment-quality-toxicants](https://www.waterquality.gov.au/anz-guidelines/guideline-values/default/sediment-quality-toxicants){target="_blank"}
+
+<p>&nbsp;</p>
